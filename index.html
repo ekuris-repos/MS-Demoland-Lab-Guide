@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lab Guide Extension — MS Demoland</title>
+  <link rel="stylesheet" href="../css/primer-brand.css" />
+  <style>
+    .overview-page {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 60%, #0d1117 100%);
+      color: #ffffff;
+      padding: var(--brand-space-7) var(--brand-space-5);
+    }
+
+    .overview-header {
+      text-align: center;
+      margin-bottom: var(--brand-space-7);
+    }
+
+    .overview-header .brand-logo {
+      width: clamp(140px, 20vw, 220px);
+      margin-bottom: var(--brand-space-4);
+    }
+
+    .overview-header h1 {
+      font-size: var(--brand-heading-size-1);
+      font-weight: var(--brand-font-weight-bold);
+      letter-spacing: -0.02em;
+      margin-bottom: var(--brand-space-2);
+    }
+
+    .overview-header p {
+      font-size: var(--brand-heading-size-3);
+      color: #8b949e;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--brand-space-2);
+      color: var(--brand-color-accent-primary);
+      text-decoration: none;
+      font-size: var(--brand-body-size-sm);
+      margin-bottom: var(--brand-space-5);
+    }
+
+    .back-link:hover { text-decoration: underline; }
+
+    .overview-content {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .overview-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: var(--brand-radius-md);
+      padding: var(--brand-space-6);
+      margin-bottom: var(--brand-space-5);
+    }
+
+    .overview-card h2 {
+      font-size: var(--brand-heading-size-2);
+      font-weight: var(--brand-font-weight-semibold);
+      margin-bottom: var(--brand-space-3);
+      color: #e6edf3;
+    }
+
+    .overview-card h3 {
+      font-size: var(--brand-heading-size-3);
+      font-weight: var(--brand-font-weight-semibold);
+      margin-top: var(--brand-space-4);
+      margin-bottom: var(--brand-space-2);
+      color: #e6edf3;
+    }
+
+    .overview-card p, .overview-card li {
+      font-size: var(--brand-body-size-md);
+      color: #8b949e;
+      line-height: 1.7;
+    }
+
+    .overview-card ul {
+      padding-left: var(--brand-space-4);
+      margin-bottom: var(--brand-space-3);
+    }
+
+    .overview-card li {
+      margin-bottom: var(--brand-space-2);
+    }
+
+    .overview-card code {
+      background: #0d1117;
+      color: #79c0ff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+
+    .file-tree {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: var(--brand-radius-md);
+      padding: var(--brand-space-4);
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #8b949e;
+      line-height: 1.8;
+      margin: var(--brand-space-3) 0;
+    }
+
+    .file-tree a {
+      color: #79c0ff;
+      text-decoration: none;
+    }
+
+    .file-tree a:hover { text-decoration: underline; }
+
+    .trust-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: var(--brand-font-weight-semibold);
+      padding: 4px 12px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: rgba(26, 127, 55, 0.15);
+      color: #3fb950;
+      margin-bottom: var(--brand-space-3);
+    }
+
+    .permission-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: var(--brand-space-2) var(--brand-space-4);
+      align-items: start;
+      margin: var(--brand-space-3) 0;
+    }
+
+    .permission-grid .check {
+      color: #3fb950;
+      font-weight: bold;
+    }
+
+    .permission-grid .cross {
+      color: #f85149;
+      font-weight: bold;
+    }
+
+    .source-link {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--brand-space-2);
+      padding: var(--brand-space-2) var(--brand-space-4);
+      border-radius: 999px;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      text-decoration: none;
+      font-size: var(--brand-body-size-sm);
+      font-weight: var(--brand-font-weight-semibold);
+      transition: border-color 0.2s, color 0.2s;
+      margin-top: var(--brand-space-3);
+    }
+
+    .source-link:hover {
+      border-color: var(--brand-color-accent-primary);
+      color: var(--brand-color-accent-primary);
+    }
+
+    .source-link svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="overview-page">
+    <div class="overview-content">
+
+      <a class="back-link" href="../index.html">&#8592; Back to Course Navigator</a>
+
+      <!-- Header -->
+      <div class="overview-header">
+        <img src="../img/ms-github-logo.svg" alt="Microsoft + GitHub" class="brand-logo" />
+        <h1>Lab Guide Extension</h1>
+        <p>Simulated Copilot Chat for hands-on training labs</p>
+      </div>
+
+      <!-- What it does -->
+      <div class="overview-card">
+        <h2>What does this extension do?</h2>
+        <p>The Lab Guide extension opens a <strong>simulated</strong> GitHub Copilot Chat panel inside VS Code with step-by-step instructions for each training lab. It does <strong>not</strong> replace or intercept real Copilot — it creates a separate webview panel that walks you through exercises.</p>
+
+        <h3>Features</h3>
+        <ul>
+          <li>Opens a simulated chat panel with pre-scripted conversation steps</li>
+          <li>Provides <code>Next &#8594;</code> / <code>&#8592; Prev</code> navigation between lab steps</li>
+          <li>Highlights relevant UI elements during each step</li>
+          <li>Launches course slides in the VS Code Simple Browser</li>
+          <li>Keyboard shortcuts: <code>Ctrl+Shift+Right</code> / <code>Ctrl+Shift+Left</code></li>
+        </ul>
+
+        <h3>Commands</h3>
+        <ul>
+          <li><code>Lab Guide: Start Lab</code> — pick a course and begin</li>
+          <li><code>Lab Guide: Next Step</code> / <code>Lab Guide: Previous Step</code></li>
+          <li><code>Lab Guide: Reset Lab</code> — restart from step 1</li>
+        </ul>
+      </div>
+
+      <!-- Trust & Permissions -->
+      <div class="overview-card">
+        <span class="trust-badge">&#10003; Transparent</span>
+        <h2>What it does NOT do</h2>
+        <p>We want you to feel confident installing this extension. Here's exactly what it accesses — and what it doesn't:</p>
+
+        <div class="permission-grid">
+          <span class="cross">&#10007;</span><span>Does <strong>not</strong> access your files, folders, or workspace content</span>
+          <span class="cross">&#10007;</span><span>Does <strong>not</strong> send telemetry or analytics</span>
+          <span class="cross">&#10007;</span><span>Does <strong>not</strong> modify any VS Code settings</span>
+          <span class="cross">&#10007;</span><span>Does <strong>not</strong> intercept or proxy GitHub Copilot traffic</span>
+          <span class="cross">&#10007;</span><span>Does <strong>not</strong> access credentials, tokens, or secrets</span>
+          <span class="check">&#10003;</span><span>Fetches <code>lab.json</code> from the course server to load step data</span>
+          <span class="check">&#10003;</span><span>Opens a read-only webview panel (the simulated chat)</span>
+          <span class="check">&#10003;</span><span>Opens course slides in VS Code's built-in Simple Browser</span>
+        </div>
+      </div>
+
+      <!-- Source Code -->
+      <div class="overview-card">
+        <h2>Source Code</h2>
+        <p>The entire extension lives in the <code>lab-guide/</code> folder of this repository. There are only three TypeScript source files:</p>
+
+        <div class="file-tree">
+          lab-guide/<br>
+          ├── <a href="src/extension.ts">src/extension.ts</a> — activation &amp; command registration<br>
+          ├── <a href="src/chatPanel.ts">src/chatPanel.ts</a> — webview panel (simulated chat UI)<br>
+          ├── <a href="src/labController.ts">src/labController.ts</a> — lab loading, step navigation<br>
+          ├── media/<br>
+          │   ├── chat.css — chat panel styling<br>
+          │   ├── chat.js — client-side message handling<br>
+          │   └── copilot-icon.svg<br>
+          └── <a href="package.json">package.json</a> — extension manifest
+        </div>
+
+        <p>No build artifacts are hidden. What you see is what runs.</p>
+
+        <a class="source-link" href="src/extension.ts">
+          <svg viewBox="0 0 16 16"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"/></svg>
+          Browse source code
+        </a>
+      </div>
+
+    </div>
+  </div>
+
+</body>
+</html>

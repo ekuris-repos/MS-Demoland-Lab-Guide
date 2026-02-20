@@ -1,0 +1,83 @@
+{
+  "name": "lab-guide",
+  "displayName": "Lab Guide",
+  "description": "Step-by-step lab guide panel with directional edge-glow arrows for hands-on training",
+  "version": "0.1.0",
+  "publisher": "ms-demoland",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onUri",
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "labGuide.startLab",
+        "title": "Lab Guide: Start Lab"
+      },
+      {
+        "command": "labGuide.nextStep",
+        "title": "Lab Guide: Next Step"
+      },
+      {
+        "command": "labGuide.prevStep",
+        "title": "Lab Guide: Previous Step"
+      },
+      {
+        "command": "labGuide.reset",
+        "title": "Lab Guide: Reset Lab"
+      },
+      {
+        "command": "labGuide.refreshBrowser",
+        "title": "Lab Guide: Refresh Browser",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "webview/toolbar": [
+        {
+          "command": "labGuide.refreshBrowser",
+          "when": "webviewId == 'labGuide.browser'",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "labGuide.nextStep",
+        "key": "ctrl+shift+right",
+        "mac": "cmd+shift+right"
+      },
+      {
+        "command": "labGuide.prevStep",
+        "key": "ctrl+shift+left",
+        "mac": "cmd+shift+left"
+      }
+    ],
+    "configuration": {
+      "title": "Lab Guide",
+      "properties": {
+        "labGuide.catalogUrl": {
+          "type": "string",
+          "default": "https://ekuris-repos.github.io/MS-Demoland/",
+          "description": "URL of the course catalog page to open on startup"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

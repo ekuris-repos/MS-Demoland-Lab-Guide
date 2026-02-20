@@ -1,0 +1,464 @@
+/* ==========================================================================
+   Lab Guide Panel — Webview Styles
+   Center panel with directional arrows + edge gradients pointing to the
+   zone the student should focus on (slides ← left, chat → right, ↓ terminal).
+   Uses VS Code theme variables for light/dark matching.
+   ========================================================================== */
+
+/* ---------- Reset ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  overflow: hidden;
+  display: flex;
+  height: 100vh;
+  position: relative;
+}
+
+/* ==========================================================================
+   Edge Gradients — glowing strip along the panel edge facing the target zone
+   ========================================================================== */
+
+.edge-glow {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+/* Left edge → pointing toward Slides */
+.edge-glow--left {
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  background: linear-gradient(
+    to right,
+    var(--glow-color, #00A4EF),
+    transparent
+  );
+  box-shadow: 0 0 18px 4px var(--glow-color, #00A4EF);
+}
+
+/* Right edge → pointing toward Chat */
+.edge-glow--right {
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  background: linear-gradient(
+    to left,
+    var(--glow-color, #7FBA00),
+    transparent
+  );
+  box-shadow: 0 0 18px 4px var(--glow-color, #7FBA00);
+}
+
+/* Top edge → pointing toward Editor tabs */
+.edge-glow--top {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(
+    to bottom,
+    var(--glow-color, #F25022),
+    transparent
+  );
+  box-shadow: 0 0 18px 4px var(--glow-color, #F25022);
+}
+
+/* Bottom edge → pointing toward Terminal */
+.edge-glow--bottom {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(
+    to top,
+    var(--glow-color, #FFB900),
+    transparent
+  );
+  box-shadow: 0 0 18px 4px var(--glow-color, #FFB900);
+}
+
+/* Active state — shown when focus points that direction */
+.edge-glow--active {
+  opacity: 1;
+  animation: edgePulse 2.2s ease-in-out infinite;
+}
+
+@keyframes edgePulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.45; }
+}
+
+/* ==========================================================================
+   Arrow Zones — directional arrows at panel edges
+   ========================================================================== */
+
+.arrow-zone {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.arrow-zone--active {
+  opacity: 1;
+}
+
+/* Left arrow */
+.arrow-left {
+  top: 0;
+  left: 0;
+  width: 64px;
+  height: 100%;
+}
+
+/* Right arrow */
+.arrow-right {
+  top: 0;
+  right: 0;
+  width: 64px;
+  height: 100%;
+}
+
+/* Down arrow */
+.arrow-down {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 56px;
+}
+
+.arrow-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.arrow-stack--horizontal {
+  flex-direction: row;
+}
+
+.arrow-svg {
+  stroke: var(--glow-color, #00A4EF);
+  filter: drop-shadow(0 0 6px var(--glow-color, #00A4EF));
+  animation: arrowBounceX 1.6s ease-in-out infinite;
+}
+
+/* Left arrows bounce left */
+.arrow-left .arrow-svg {
+  animation-name: arrowBounceLeft;
+}
+
+/* Right arrows bounce right */
+.arrow-right .arrow-svg {
+  animation-name: arrowBounceRight;
+}
+
+/* Down arrows bounce down */
+.arrow-down .arrow-svg {
+  animation-name: arrowBounceDown;
+}
+
+@keyframes arrowBounceLeft {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(-8px); }
+}
+
+@keyframes arrowBounceRight {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(8px); }
+}
+
+@keyframes arrowBounceDown {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(6px); }
+}
+
+.arrow-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--glow-color, #00A4EF);
+  text-shadow: 0 0 8px var(--glow-color, #00A4EF);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Main Content — step card in the center
+   ========================================================================== */
+
+.guide-container {
+  position: relative;
+  z-index: 5;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 72px;          /* generous padding to leave room for arrows */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---- Lab header ---- */
+.lab-header {
+  flex-shrink: 0;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.2));
+}
+
+.lab-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+/* ---- Step card ---- */
+.step-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.step-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--vscode-badge-background, #007fd4);
+  color: var(--vscode-badge-foreground, #fff);
+  white-space: nowrap;
+}
+
+.step-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  line-height: 1.3;
+}
+
+.step-instruction {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--vscode-foreground);
+  opacity: 0.92;
+}
+
+.step-instruction strong {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.step-instruction kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  border: 1px solid var(--vscode-widget-border, #555);
+  border-radius: 4px;
+  background: var(--vscode-input-background, #3c3c3c);
+  box-shadow: 0 1px 0 var(--vscode-widget-border, #333);
+}
+
+.step-instruction code {
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.15));
+}
+
+.step-instruction pre {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  overflow-x: auto;
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.step-instruction pre code {
+  padding: 0;
+  background: transparent;
+}
+
+/* ---- Optional tip callout ---- */
+.step-tip {
+  display: none;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border-left: 3px solid var(--vscode-editorInfo-foreground, #3794ff);
+  background: var(--vscode-editorInfo-background, rgba(55, 148, 255, 0.08));
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--vscode-foreground);
+  opacity: 0.9;
+}
+
+.step-tip--visible {
+  display: block;
+}
+
+/* ---- Navigation buttons ---- */
+.step-nav {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.2));
+  margin-top: auto;
+}
+
+.step-btn {
+  padding: 6px 18px;
+  border-radius: 4px;
+  border: 1px solid var(--vscode-button-secondaryBackground, #555);
+  background: var(--vscode-button-secondaryBackground, #3c3c3c);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.step-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #444);
+}
+
+.step-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.step-btn--primary {
+  background: var(--vscode-button-background, #007fd4);
+  color: var(--vscode-button-foreground, #fff);
+  border-color: var(--vscode-button-background, #007fd4);
+}
+
+.step-btn--primary:hover {
+  background: var(--vscode-button-hoverBackground, #0062a3);
+}
+
+/* ==========================================================================
+   Opening Animation — clockwise edge-glow chase + centre spinner
+   ========================================================================== */
+
+/* Hide step content during opening */
+body.opening .guide-container {
+  opacity: 0;
+}
+
+body:not(.opening) .guide-container {
+  transition: opacity 0.5s ease;
+}
+
+/* Hide arrows during opening */
+body.opening .arrow-zone {
+  display: none !important;
+}
+
+/* Centre overlay with spinner */
+.opening-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.5s ease;
+}
+
+body:not(.opening) .opening-overlay {
+  opacity: 0;
+}
+
+.opening-spinner {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: conic-gradient(
+    #F25022 0deg 90deg,
+    #7FBA00 90deg 180deg,
+    #FFB900 180deg 270deg,
+    #00A4EF 270deg 360deg
+  );
+  -webkit-mask: radial-gradient(closest-side, transparent 75%, black 76%);
+  mask: radial-gradient(closest-side, transparent 75%, black 76%);
+  animation: openingSpin 1.6s linear infinite;
+}
+
+@keyframes openingSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Edge-chase: each edge pulses in clockwise sequence */
+.edge-glow.edge-glow--chase {
+  transition: none;   /* prevent base transition from fighting the animation */
+  animation: edgeChase 1.6s ease-in-out infinite;
+}
+
+.edge-glow--top.edge-glow--chase    { --glow-color: #F25022; animation-delay: 0.05s; }
+.edge-glow--right.edge-glow--chase  { --glow-color: #7FBA00; animation-delay: 0.45s; }
+.edge-glow--bottom.edge-glow--chase { --glow-color: #FFB900; animation-delay: 0.85s; }
+.edge-glow--left.edge-glow--chase   { --glow-color: #00A4EF; animation-delay: 1.25s; }
+
+@keyframes edgeChase {
+  0%, 100% { opacity: 0.05; }
+  12%      { opacity: 1; }
+  30%      { opacity: 0.05; }
+}
+
+/* ==========================================================================
+   Focus-zone colour presets
+   ========================================================================== */
+
+/* Slides (left) — blue */
+body[data-focus="slides"] { --glow-color: #00A4EF; }
+
+/* Chat (right) — green */
+body[data-focus="chat"]   { --glow-color: #7FBA00; }
+
+/* Terminal (bottom) — yellow */
+body[data-focus="terminal"] { --glow-color: #FFB900; }
+
+/* Editor (center-self) — red */
+body[data-focus="editor"] { --glow-color: #F25022; }
+
+/* Guide (no direction, self) — keep default subtle */
+body[data-focus="guide"]  { --glow-color: var(--vscode-focusBorder, #007fd4); }
