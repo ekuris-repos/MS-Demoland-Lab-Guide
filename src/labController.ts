@@ -214,7 +214,20 @@ export class LabController {
           this.log.info(`[action] Skipped (untitled file exists): ${cmd}`);
           return;
         }
-        break;
+        // Open in column 1 (slides side) so it doesn't cover the guide panel
+        this.log.info(`[action] Opening untitled file in Column 1 (background)`);
+        try {
+          const doc = await vscode.workspace.openTextDocument({ content: '' });
+          await vscode.window.showTextDocument(doc, {
+            viewColumn: vscode.ViewColumn.One,
+            preserveFocus: true
+          });
+          this.log.info(`[action] ✓ Untitled file opened in Column 1`);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.log.error(`[action] ✗ newUntitledFile: ${msg}`);
+        }
+        return;
       }
       case 'workbench.action.terminal.toggleTerminal':
       case 'workbench.action.terminal.focus': {
