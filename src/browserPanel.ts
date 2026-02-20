@@ -5,6 +5,7 @@ import * as https from 'https';
 export class BrowserPanel {
   private panel: vscode.WebviewPanel | undefined;
   private currentUrl: string | undefined;
+  private catalogUrl: string | undefined;
   private messageHandler: ((msg: any) => void) | undefined;
 
   constructor(
@@ -20,6 +21,7 @@ export class BrowserPanel {
   async showCatalog(url: string) {
     this.log.info(`[BrowserPanel] showCatalog(${url})`);
     this.currentUrl = url;
+    this.catalogUrl = url;
 
     this.ensurePanel();
     this.panel!.title = 'Course Catalog';
@@ -54,7 +56,7 @@ export class BrowserPanel {
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; frame-src https: http:; style-src 'nonce-${nonce}';">
+    content="default-src 'none'; frame-src https: http:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <style nonce="${nonce}">
     * { margin: 0; padding: 0; }
     html, body { height: 100%; overflow: hidden; }
@@ -63,6 +65,17 @@ export class BrowserPanel {
 </head>
 <body>
   <iframe src="${escapeHtml(url)}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+  <script nonce="${nonce}">
+    (function() {
+      var vscode = acquireVsCodeApi();
+      var iframe = document.querySelector('iframe');
+      var firstLoad = true;
+      iframe.addEventListener('load', function() {
+        if (firstLoad) { firstLoad = false; return; }
+        vscode.postMessage({ type: 'iframeNavigated' });
+      });
+    })();
+  </script>
 </body>
 </html>`;
   }
@@ -100,6 +113,11 @@ export class BrowserPanel {
 
     this.panel.webview.onDidReceiveMessage(msg => {
       this.log.info(`[BrowserPanel] Received message: ${JSON.stringify(msg)}`);
+      if (msg.type === 'iframeNavigated' && this.catalogUrl) {
+        this.log.info('[BrowserPanel] Iframe navigated away from slides, returning to catalog');
+        this.showCatalog(this.catalogUrl);
+        return;
+      }
       if (this.messageHandler) { this.messageHandler(msg); }
     }, undefined, this.context.subscriptions);
 
@@ -135,11 +153,16 @@ export class BrowserPanel {
     subtitle.textContent = 'Click a course card below to start the hands-on lab';
   }
 
-  // Intercept course card clicks
+  // Intercept course card clicks.
+  // Clone each card to strip any built-in listeners (the catalog page
+  // adds its own handler that fires vscode:// URIs into the system
+  // browser — we need to prevent that inside the extension webview).
   document.querySelectorAll('.course-card[href]').forEach(function(card) {
-    card.addEventListener('click', function(e) {
+    var fresh = card.cloneNode(true);
+    card.parentNode.replaceChild(fresh, card);
+    fresh.addEventListener('click', function(e) {
       e.preventDefault();
-      var href = card.getAttribute('href') || '';
+      var href = fresh.getAttribute('href') || '';
       var coursePath = href.replace(/^\\.?\\.?\\//, '').replace(/\\/index\\.html$/, '');
       console.log('[Catalog] Card clicked: ' + coursePath);
       if (!coursePath) return;

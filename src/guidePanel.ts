@@ -90,6 +90,16 @@ export class GuidePanel {
     </div>
   </div>
 
+  <!-- ── Up arrow zone ── -->
+  <div class="arrow-zone arrow-up" id="arrowUp">
+    <div class="arrow-stack arrow-stack--horizontal">
+      <svg class="arrow-svg" viewBox="0 0 80 48" width="80" height="48">
+        <path d="M4 40 L40 8 L76 40" fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="arrow-label" id="arrowUpLabel">Editor</span>
+    </div>
+  </div>
+
   <!-- ── Down arrow zone ── -->
   <div class="arrow-zone arrow-down" id="arrowDown">
     <div class="arrow-stack arrow-stack--horizontal">

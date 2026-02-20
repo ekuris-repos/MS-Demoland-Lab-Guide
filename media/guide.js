@@ -21,9 +21,11 @@
   /* Arrow / glow elements */
   var arrowLeft       = document.getElementById('arrowLeft');
   var arrowRight      = document.getElementById('arrowRight');
+  var arrowUp         = document.getElementById('arrowUp');
   var arrowDown       = document.getElementById('arrowDown');
   var arrowLeftLabel  = document.getElementById('arrowLeftLabel');
   var arrowRightLabel = document.getElementById('arrowRightLabel');
+  var arrowUpLabel    = document.getElementById('arrowUpLabel');
   var arrowDownLabel  = document.getElementById('arrowDownLabel');
   var edgeTop         = document.getElementById('edgeTop');
   var edgeLeft        = document.getElementById('edgeLeft');
@@ -40,7 +42,7 @@
     slides:   { arrows: ['left'],  edges: ['left'],   labels: { left: 'Slides' } },
     chat:     { arrows: ['right'], edges: ['right'],  labels: { right: 'Copilot Chat' } },
     terminal: { arrows: ['down'],  edges: ['bottom'], labels: { down: 'Terminal' } },
-    editor:   { arrows: [],        edges: [],         labels: {} },
+    editor:   { arrows: ['up'],    edges: ['top'],    labels: { up: 'Editor' } },
     guide:    { arrows: [],        edges: [],         labels: {} }
   };
 
@@ -103,16 +105,19 @@
     // Arrows
     toggleActive(arrowLeft,  mapping.arrows.indexOf('left') !== -1);
     toggleActive(arrowRight, mapping.arrows.indexOf('right') !== -1);
+    toggleActive(arrowUp,    mapping.arrows.indexOf('up') !== -1);
     toggleActive(arrowDown,  mapping.arrows.indexOf('down') !== -1);
 
     // Edge glows
     toggleActive(edgeLeft,   mapping.edges.indexOf('left') !== -1);
     toggleActive(edgeRight,  mapping.edges.indexOf('right') !== -1);
+    toggleActive(edgeTop,    mapping.edges.indexOf('top') !== -1);
     toggleActive(edgeBottom, mapping.edges.indexOf('bottom') !== -1);
 
     // Labels
     if (mapping.labels.left)  { arrowLeftLabel.textContent  = mapping.labels.left; }
     if (mapping.labels.right) { arrowRightLabel.textContent = mapping.labels.right; }
+    if (mapping.labels.up)    { arrowUpLabel.textContent    = mapping.labels.up; }
     if (mapping.labels.down)  { arrowDownLabel.textContent  = mapping.labels.down; }
   }
 
