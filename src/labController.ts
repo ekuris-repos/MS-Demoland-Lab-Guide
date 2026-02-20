@@ -214,15 +214,15 @@ export class LabController {
           this.log.info(`[action] Skipped (untitled file exists): ${cmd}`);
           return;
         }
-        // Open in column 1 (slides side) so it doesn't cover the guide panel
-        this.log.info(`[action] Opening untitled file in Column 1 (background)`);
+        // Open as a background tab in the guide column (Column 2)
+        this.log.info(`[action] Opening untitled file in Column 2 (background)`);
         try {
           const doc = await vscode.workspace.openTextDocument({ content: '' });
           await vscode.window.showTextDocument(doc, {
-            viewColumn: vscode.ViewColumn.One,
+            viewColumn: vscode.ViewColumn.Two,
             preserveFocus: true
           });
-          this.log.info(`[action] ✓ Untitled file opened in Column 1`);
+          this.log.info(`[action] ✓ Untitled file opened in Column 2`);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           this.log.error(`[action] ✗ newUntitledFile: ${msg}`);
