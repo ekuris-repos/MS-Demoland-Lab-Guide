@@ -169,15 +169,11 @@ class BrowserPanel {
   }
 
   // Intercept course card clicks.
-  // Clone each card to strip any built-in listeners (the catalog page
-  // adds its own handler that fires vscode:// URIs into the system
-  // browser — we need to prevent that inside the extension webview).
   document.querySelectorAll('.course-card[href]').forEach(function(card) {
-    var fresh = card.cloneNode(true);
-    card.parentNode.replaceChild(fresh, card);
-    fresh.addEventListener('click', function(e) {
+    card.addEventListener('click', function(e) {
       e.preventDefault();
-      var href = fresh.getAttribute('href') || '';
+      e.stopImmediatePropagation();
+      var href = card.getAttribute('href') || '';
       var coursePath = href.replace(/^\\.?\\.?\\//, '').replace(/\\/index\\.html$/, '');
       console.log('[Catalog] Card clicked: ' + coursePath);
       if (!coursePath) return;
@@ -186,13 +182,16 @@ class BrowserPanel {
         server: '${base}',
         course: coursePath
       });
-    });
+    }, true);
   });
 })();
 </script>`;
         let modified = html;
         // Inject <base> after <head> so relative URLs resolve to the remote server
         modified = modified.replace(/<head([^>]*)>/i, `<head$1>\n<base href="${escapeHtml(base)}/">`);
+        // Remove the original catalog script that fires vscode:// URIs into the system browser.
+        // It conflicts with our injected handler since the webview is not an iframe.
+        modified = modified.replace(/\/\/\s*──\s*Lab Guide integration[\s\S]*?<\/script>/i, '</script>');
         // Inject our handler before </body>
         modified = modified.replace(/<\/body>/i, handler + '\n</body>');
         return modified;
