@@ -47,6 +47,17 @@
     guide:    { arrows: [],        edges: [],         labels: {} }
   };
 
+  /* Zone → colour (matches CSS focus-zone presets) */
+  var zoneColors = {
+    slides:   '#00A4EF',
+    chat:     '#7FBA00',
+    terminal: '#FFB900',
+    editor:   '#F25022'
+  };
+
+  /* Edge/arrow direction → zone lookup (for per-edge colouring) */
+  var directionToZone = { left: 'slides', right: 'chat', bottom: 'terminal', top: 'editor', down: 'terminal', up: 'editor' };
+
   /* ---- Extension → Webview messages ---- */
   window.addEventListener('message', function (event) {
     var msg = event.data;
@@ -89,37 +100,65 @@
     nextBtn.disabled = step.index === step.total - 1;
 
     // Focus zone
+    var focus = step.focus || 'guide';
     if (isOpening) {
-      pendingFocus = step.focus || 'guide';
+      pendingFocus = focus;
     } else {
-      applyFocus(step.focus || 'guide');
+      applyFocus(focus);
     }
   }
 
   /* ---- Apply focus zone: edge glow + arrows ---- */
   function applyFocus(zone) {
-    // Set data attribute on body for CSS colour variable
-    document.body.setAttribute('data-focus', zone);
+    // Support multiple zones (string or array)
+    var zones = Array.isArray(zone) ? zone : [zone];
 
-    var mapping = focusMap[zone] || focusMap.guide;
+    // Set data attribute to first zone for CSS colour variable
+    document.body.setAttribute('data-focus', zones[0]);
+
+    // Merge all mappings
+    var allArrows = [];
+    var allEdges  = [];
+    var allLabels = {};
+    zones.forEach(function(z) {
+      var m = focusMap[z] || focusMap.guide;
+      m.arrows.forEach(function(a) { if (allArrows.indexOf(a) === -1) allArrows.push(a); });
+      m.edges.forEach(function(e)  { if (allEdges.indexOf(e) === -1) allEdges.push(e); });
+      Object.keys(m.labels).forEach(function(k) { allLabels[k] = m.labels[k]; });
+    });
 
     // Arrows
-    toggleActive(arrowLeft,  mapping.arrows.indexOf('left') !== -1);
-    toggleActive(arrowRight, mapping.arrows.indexOf('right') !== -1);
-    toggleActive(arrowUp,    mapping.arrows.indexOf('up') !== -1);
-    toggleActive(arrowDown,  mapping.arrows.indexOf('down') !== -1);
+    toggleActive(arrowLeft,  allArrows.indexOf('left') !== -1);
+    toggleActive(arrowRight, allArrows.indexOf('right') !== -1);
+    toggleActive(arrowUp,    allArrows.indexOf('up') !== -1);
+    toggleActive(arrowDown,  allArrows.indexOf('down') !== -1);
 
     // Edge glows
-    toggleActive(edgeLeft,   mapping.edges.indexOf('left') !== -1);
-    toggleActive(edgeRight,  mapping.edges.indexOf('right') !== -1);
-    toggleActive(edgeTop,    mapping.edges.indexOf('top') !== -1);
-    toggleActive(edgeBottom, mapping.edges.indexOf('bottom') !== -1);
+    toggleActive(edgeLeft,   allEdges.indexOf('left') !== -1);
+    toggleActive(edgeRight,  allEdges.indexOf('right') !== -1);
+    toggleActive(edgeTop,    allEdges.indexOf('top') !== -1);
+    toggleActive(edgeBottom, allEdges.indexOf('bottom') !== -1);
+
+    // Per-edge colours when multiple zones are active
+    var multi = zones.length > 1;
+    var edgePairs = [
+      [edgeLeft, arrowLeft, 'left'],
+      [edgeRight, arrowRight, 'right'],
+      [edgeTop, arrowUp, 'top'],
+      [edgeBottom, arrowDown, 'bottom']
+    ];
+    edgePairs.forEach(function(pair) {
+      var edge = pair[0], arrow = pair[1], dir = pair[2];
+      var color = multi ? (zoneColors[directionToZone[dir]] || '') : '';
+      if (edge) { edge.style.setProperty('--glow-color', color || ''); }
+      if (arrow) { arrow.style.setProperty('--glow-color', color || ''); }
+    });
 
     // Labels
-    if (mapping.labels.left)  { arrowLeftLabel.textContent  = mapping.labels.left; }
-    if (mapping.labels.right) { arrowRightLabel.textContent = mapping.labels.right; }
-    if (mapping.labels.up)    { arrowUpLabel.textContent    = mapping.labels.up; }
-    if (mapping.labels.down)  { arrowDownLabel.textContent  = mapping.labels.down; }
+    if (allLabels.left)  { arrowLeftLabel.textContent  = allLabels.left; }
+    if (allLabels.right) { arrowRightLabel.textContent = allLabels.right; }
+    if (allLabels.up)    { arrowUpLabel.textContent    = allLabels.up; }
+    if (allLabels.down)  { arrowDownLabel.textContent  = allLabels.down; }
   }
 
   function toggleActive(el, active) {

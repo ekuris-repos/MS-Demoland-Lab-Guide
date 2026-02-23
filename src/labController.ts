@@ -8,7 +8,7 @@ export interface LabStep {
   title: string;
   instruction: string;
   tip?: string;
-  focus?: 'slides' | 'chat' | 'terminal' | 'editor' | 'guide';
+  focus?: string | string[];
   action?: string | string[];
 }
 
