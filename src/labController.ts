@@ -163,8 +163,6 @@ export class LabController {
     this.guidePanel?.dispose();
     this.guidePanel = undefined;
 
-    // Close all editor tabs (untitled files, settings, etc.)
-    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     // Close sidebar (Extensions pane, Explorer, etc.)
     await vscode.commands.executeCommand('workbench.action.closeSidebar');
     // Close panel area (Terminal, Output, Problems, etc.)

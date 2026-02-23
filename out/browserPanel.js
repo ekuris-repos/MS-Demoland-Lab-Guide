@@ -217,15 +217,20 @@ class BrowserPanel {
             return;
         }
         this.panel = vscode.window.createWebviewPanel('labGuide.browser', 'Course Catalog', { viewColumn: vscode.ViewColumn.One, preserveFocus: true }, { enableScripts: true, retainContextWhenHidden: true });
-        this.panel.webview.onDidReceiveMessage(msg => {
+        this.panel.webview.onDidReceiveMessage(async (msg) => {
             this.log.info(`[BrowserPanel] Received message: ${JSON.stringify(msg)}`);
             if (msg.type === 'iframeNavigated' && this.catalogUrl) {
-                this.log.info('[BrowserPanel] Iframe navigated away from slides, returning to catalog');
-                this.showCatalog(this.catalogUrl);
-                // Forward to controller so it can clean up
+                this.log.info('[BrowserPanel] Home requested, forwarding to controller for cleanup');
+                // Forward to controller FIRST so it can clean up guide panel, editors, etc.
                 if (this.messageHandler) {
                     this.messageHandler(msg);
                 }
+                // Then navigate back to catalog
+                this.log.info('[BrowserPanel] Returning to catalog');
+                this.showCatalog(this.catalogUrl);
+                // Reveal this panel and close any other lingering editors
+                this.panel.reveal(vscode.ViewColumn.One);
+                await vscode.commands.executeCommand('workbench.action.closeOtherEditors');
                 return;
             }
             if (this.messageHandler) {
