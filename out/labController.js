@@ -209,9 +209,24 @@ class LabController {
         return this.lab?.slides[String(this.currentSlide)];
     }
     /** Called when the browser panel reports a slide change. */
-    onSlideChanged(slide) {
+    async onSlideChanged(slide) {
         if (!this.lab || !this.guidePanel) {
             return;
+        }
+        // Run onLeave cleanup for the previous slide
+        const prevEntry = this.lab.slides[String(this.currentSlide)];
+        if (prevEntry?.onLeave) {
+            const commands = Array.isArray(prevEntry.onLeave) ? prevEntry.onLeave : [prevEntry.onLeave];
+            for (const cmd of commands) {
+                this.log.info(`[onLeave] Slide ${this.currentSlide} → ${cmd}`);
+                try {
+                    await vscode.commands.executeCommand(cmd);
+                }
+                catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    this.log.error(`[onLeave] ✗ ${cmd}: ${msg}`);
+                }
+            }
         }
         this.log.info(`[LabController] Slide changed → ${slide}`);
         this.currentSlide = slide;
@@ -262,9 +277,9 @@ class LabController {
         }
     }
     /** Run a VS Code command only if its target isn't already visible. */
-    async executeAction(cmd) {
+    async executeAction(cmd, force = false) {
         const tabs = vscode.window.tabGroups.all.flatMap(g => g.tabs);
-        // Guard: skip if the target is already open
+        // Guard: skip if the target is already open (unless forced)
         switch (cmd) {
             case 'workbench.action.chat.open': {
                 const hasChat = tabs.some(t => t.label.toLowerCase().includes('copilot') ||
@@ -276,10 +291,12 @@ class LabController {
                 break;
             }
             case 'workbench.action.files.newUntitledFile': {
-                const hasUntitled = tabs.some(t => t.label.startsWith('Untitled'));
-                if (hasUntitled) {
-                    this.log.info(`[action] Skipped (untitled file exists): ${cmd}`);
-                    return;
+                if (!force) {
+                    const hasUntitled = tabs.some(t => t.label.startsWith('Untitled'));
+                    if (hasUntitled) {
+                        this.log.info(`[action] Skipped (untitled file exists): ${cmd}`);
+                        return;
+                    }
                 }
                 // Open as a background tab in the guide column (Column 2)
                 this.log.info(`[action] Opening untitled file in Column 2 (background)`);
@@ -336,7 +353,31 @@ class LabController {
             case 'ready':
                 this.showCurrentStep();
                 break;
+            case 'replayAction':
+                this.replayCurrentAction();
+                break;
+            case 'copyToClipboard':
+                if (msg.text) {
+                    vscode.env.clipboard.writeText(msg.text);
+                }
+                break;
         }
+    }
+    /** Re-execute the current step's action (e.g. re-open a closed file). */
+    async replayCurrentAction() {
+        const entry = this.currentEntry();
+        if (!entry) {
+            return;
+        }
+        const step = entry.steps[this.currentSubStep];
+        if (!step?.action) {
+            return;
+        }
+        const actions = Array.isArray(step.action) ? step.action : [step.action];
+        for (const cmd of actions) {
+            await this.executeAction(cmd, true);
+        }
+        setTimeout(() => this.guidePanel?.reveal(), 300);
     }
     onBrowserMessage(msg) {
         this.log.info(`[LabController] onBrowserMessage: type=${msg.type}`);

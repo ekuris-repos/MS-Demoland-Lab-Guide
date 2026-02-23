@@ -17,6 +17,7 @@
   var stepTip         = document.getElementById('stepTip');
   var prevBtn         = document.getElementById('prevBtn');
   var nextBtn         = document.getElementById('nextBtn');
+  var actionBtn       = document.getElementById('actionBtn');
 
   /* Arrow / glow elements */
   var arrowLeft       = document.getElementById('arrowLeft');
@@ -79,6 +80,45 @@
     vscode.postMessage({ type: 'nextStep' });
   });
 
+  actionBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'replayAction' });
+  });
+
+  /* ---- Copy-to-clipboard SVG icons ---- */
+  var COPY_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="5.5" y="3.5" width="8" height="10" rx="1"/><path d="M3.5 11.5V2.5a1 1 0 0 1 1-1h6"/></svg>';
+  var CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>';
+
+  /** Add a small copy button after each <kbd> that contains text to type. */
+  function addCopyButtons() {
+    var kbdElements = stepInstruction.querySelectorAll('kbd');
+    for (var i = 0; i < kbdElements.length; i++) {
+      var kbd = kbdElements[i];
+      var text = (kbd.innerText || kbd.textContent || '').trim();
+      // Skip keyboard shortcuts (Ctrl+X, Alt+Tab, etc.) and very short text
+      if (/^(Ctrl|Shift|Alt|Cmd|Tab|Esc|Enter|Space)\b/.test(text)) { continue; }
+      if (text.length < 5) { continue; }
+
+      var btn = document.createElement('button');
+      btn.className = 'kbd-copy-btn';
+      btn.title = 'Copy to clipboard';
+      btn.innerHTML = COPY_SVG;
+      (function(b, t) {
+        b.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          vscode.postMessage({ type: 'copyToClipboard', text: t });
+          b.innerHTML = CHECK_SVG;
+          b.classList.add('kbd-copy-btn--copied');
+          setTimeout(function() {
+            b.innerHTML = COPY_SVG;
+            b.classList.remove('kbd-copy-btn--copied');
+          }, 1500);
+        });
+      })(btn, text);
+      kbd.parentNode.insertBefore(btn, kbd.nextSibling);
+    }
+  }
+
   /* ---- Render a step ---- */
   function renderStep(step) {
     // Badge — show slide number and sub-step if multi-step
@@ -89,6 +129,17 @@
     }
     stepTitle.textContent = step.title;
     stepInstruction.innerHTML = step.instruction || '';
+
+    // Add copy-to-clipboard buttons to <kbd> blocks
+    addCopyButtons();
+
+    // Action replay button (e.g. "Open New File" in case user closed it)
+    if (step.actionLabel) {
+      actionBtn.textContent = step.actionLabel;
+      actionBtn.style.display = '';
+    } else {
+      actionBtn.style.display = 'none';
+    }
 
     // Optional tip
     if (step.tip) {

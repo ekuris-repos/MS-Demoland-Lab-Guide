@@ -5,7 +5,7 @@ export class GuidePanel {
 
   constructor(
     private context: vscode.ExtensionContext,
-    private onMessage: (msg: { type: string }) => void
+    private onMessage: (msg: { type: string; text?: string }) => void
   ) {}
 
   show() {
@@ -131,6 +131,7 @@ export class GuidePanel {
       <h2 class="step-title" id="stepTitle">Welcome</h2>
       <div class="step-instruction" id="stepInstruction"></div>
       <div class="step-tip" id="stepTip"></div>
+      <button id="actionBtn" class="action-btn" style="display:none"></button>
     </div>
 
     <!-- Navigation -->

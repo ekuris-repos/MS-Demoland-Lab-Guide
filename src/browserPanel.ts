@@ -271,8 +271,9 @@ export class BrowserPanel {
 </script>`;
 
     let modified = html;
-    // Inject <base> after <head> so relative URLs resolve to the remote server
-    modified = modified.replace(/<head([^>]*)>/i, `<head$1>\n<base href="${escapeHtml(base)}/">`);
+    // Inject <base> and a permissive CSP so fetch() and resources work in the webview
+    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${escapeHtml(base)}/; img-src ${escapeHtml(base)}/ data:; style-src ${escapeHtml(base)}/ 'unsafe-inline'; font-src ${escapeHtml(base)}/; script-src 'unsafe-inline';">`;
+    modified = modified.replace(/<head([^>]*)>/i, `<head$1>\n<base href="${escapeHtml(base)}/">\n${csp}`);
     // Rewrite relative fetch() calls to absolute URLs (fetch doesn't use <base> in webviews)
     modified = modified.replace(/fetch\(\s*['"]api\//g, `fetch('${base}/api/`);
     // Remove the original catalog script that fires vscode:// URIs into the system browser.

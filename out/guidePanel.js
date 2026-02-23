@@ -149,6 +149,7 @@ class GuidePanel {
       <h2 class="step-title" id="stepTitle">Welcome</h2>
       <div class="step-instruction" id="stepInstruction"></div>
       <div class="step-tip" id="stepTip"></div>
+      <button id="actionBtn" class="action-btn" style="display:none"></button>
     </div>
 
     <!-- Navigation -->

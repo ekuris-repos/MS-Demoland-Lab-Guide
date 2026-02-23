@@ -10,11 +10,13 @@ export interface LabStep {
   tip?: string;
   focus?: string | string[];
   action?: string | string[];
+  actionLabel?: string;
 }
 
 /** A slide entry contains one or more sub-steps shown when that slide is active. */
 export interface SlideEntry {
   steps: LabStep[];
+  onLeave?: string | string[];
 }
 
 /** New lab.json format: keyed by slide number. */
@@ -210,8 +212,24 @@ export class LabController {
   }
 
   /** Called when the browser panel reports a slide change. */
-  private onSlideChanged(slide: number) {
+  private async onSlideChanged(slide: number) {
     if (!this.lab || !this.guidePanel) { return; }
+
+    // Run onLeave cleanup for the previous slide
+    const prevEntry = this.lab.slides[String(this.currentSlide)];
+    if (prevEntry?.onLeave) {
+      const commands = Array.isArray(prevEntry.onLeave) ? prevEntry.onLeave : [prevEntry.onLeave];
+      for (const cmd of commands) {
+        this.log.info(`[onLeave] Slide ${this.currentSlide} → ${cmd}`);
+        try {
+          await vscode.commands.executeCommand(cmd);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.log.error(`[onLeave] ✗ ${cmd}: ${msg}`);
+        }
+      }
+    }
+
     this.log.info(`[LabController] Slide changed → ${slide}`);
     this.currentSlide = slide;
     this.currentSubStep = 0;
@@ -266,10 +284,10 @@ export class LabController {
   }
 
   /** Run a VS Code command only if its target isn't already visible. */
-  private async executeAction(cmd: string) {
+  private async executeAction(cmd: string, force = false) {
     const tabs = vscode.window.tabGroups.all.flatMap(g => g.tabs);
 
-    // Guard: skip if the target is already open
+    // Guard: skip if the target is already open (unless forced)
     switch (cmd) {
       case 'workbench.action.chat.open': {
         const hasChat = tabs.some(t =>
@@ -283,10 +301,12 @@ export class LabController {
         break;
       }
       case 'workbench.action.files.newUntitledFile': {
-        const hasUntitled = tabs.some(t => t.label.startsWith('Untitled'));
-        if (hasUntitled) {
-          this.log.info(`[action] Skipped (untitled file exists): ${cmd}`);
-          return;
+        if (!force) {
+          const hasUntitled = tabs.some(t => t.label.startsWith('Untitled'));
+          if (hasUntitled) {
+            this.log.info(`[action] Skipped (untitled file exists): ${cmd}`);
+            return;
+          }
         }
         // Open as a background tab in the guide column (Column 2)
         this.log.info(`[action] Opening untitled file in Column 2 (background)`);
@@ -332,12 +352,29 @@ export class LabController {
     }
   }
 
-  private onWebviewMessage(msg: { type: string }) {
+  private onWebviewMessage(msg: { type: string; text?: string }) {
     switch (msg.type) {
       case 'nextStep': this.nextStep(); break;
       case 'prevStep': this.prevStep(); break;
       case 'ready': this.showCurrentStep(); break;
+      case 'replayAction': this.replayCurrentAction(); break;
+      case 'copyToClipboard':
+        if (msg.text) { vscode.env.clipboard.writeText(msg.text); }
+        break;
     }
+  }
+
+  /** Re-execute the current step's action (e.g. re-open a closed file). */
+  private async replayCurrentAction() {
+    const entry = this.currentEntry();
+    if (!entry) { return; }
+    const step = entry.steps[this.currentSubStep];
+    if (!step?.action) { return; }
+    const actions = Array.isArray(step.action) ? step.action : [step.action];
+    for (const cmd of actions) {
+      await this.executeAction(cmd, true);
+    }
+    setTimeout(() => this.guidePanel?.reveal(), 300);
   }
 
   private onBrowserMessage(msg: { type: string; server?: string; course?: string; slide?: number }) {
