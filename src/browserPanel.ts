@@ -41,7 +41,7 @@ export class BrowserPanel {
     this.panel!.webview.html = this.injectCatalogHandler(html, url);
   }
 
-  /** Show course slides in an iframe (no interception needed). */
+  /** Show course slides in an iframe with slide-change detection. */
   showSlides(url: string) {
     this.log.info(`[BrowserPanel] showSlides(${url})`);
     this.currentUrl = url;
@@ -70,8 +70,37 @@ export class BrowserPanel {
       var vscode = acquireVsCodeApi();
       var iframe = document.querySelector('iframe');
       var firstLoad = true;
+      var lastSlide = -1;
+
+      function parseSlide(hash) {
+        var m = (hash || '').match(/#slide-(\\d+)/);
+        return m ? parseInt(m[1], 10) : 1;
+      }
+
+      function checkSlide() {
+        try {
+          var hash = iframe.contentWindow.location.hash;
+          var slide = parseSlide(hash);
+          if (slide !== lastSlide) {
+            lastSlide = slide;
+            vscode.postMessage({ type: 'slideChanged', slide: slide });
+          }
+        } catch (e) { /* cross-origin — ignore */ }
+      }
+
       iframe.addEventListener('load', function() {
-        if (firstLoad) { firstLoad = false; return; }
+        if (firstLoad) {
+          firstLoad = false;
+          // Initial slide detection
+          checkSlide();
+          // Listen for hash changes inside the iframe
+          try {
+            iframe.contentWindow.addEventListener('hashchange', checkSlide);
+          } catch (e) { /* fallback to polling */ }
+          // Poll as backup (some navigation uses replaceState, not hashchange)
+          setInterval(checkSlide, 500);
+          return;
+        }
         vscode.postMessage({ type: 'iframeNavigated' });
       });
     })();

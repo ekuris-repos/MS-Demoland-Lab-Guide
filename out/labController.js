@@ -43,7 +43,8 @@ class LabController {
     constructor(context, log) {
         this.context = context;
         this.log = log;
-        this.currentStep = 0;
+        this.currentSlide = 1;
+        this.currentSubStep = 0;
         this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
         context.subscriptions.push(this.statusBarItem);
         this.browserPanel = new browserPanel_1.BrowserPanel(context, log);
@@ -70,8 +71,9 @@ class LabController {
                 return;
             }
             this.lab = labJson;
-            this.currentStep = 0;
-            this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${this.lab.steps.length} steps`);
+            this.currentSlide = 1;
+            this.currentSubStep = 0;
+            this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
             // Navigate the browser panel to the course slides (left column)
             const courseUrl = `${server}/${coursePath}/`;
             this.log.info(`[startLabFromUri] Navigating browser panel → ${courseUrl}`);
@@ -118,22 +120,26 @@ class LabController {
         this.log.info(`startLab → opening catalog at ${server}`);
         this.openCatalog(server.replace(/\/+$/, '') + '/');
     }
+    /** Move to next sub-step within the current slide. */
     nextStep() {
-        if (!this.lab || this.currentStep >= this.lab.steps.length - 1) {
+        const entry = this.currentEntry();
+        if (!entry) {
             return;
         }
-        this.currentStep++;
-        this.showCurrentStep();
+        if (this.currentSubStep < entry.steps.length - 1) {
+            this.currentSubStep++;
+            this.showCurrentStep();
+        }
     }
+    /** Move to previous sub-step within the current slide. */
     prevStep() {
-        if (!this.lab || this.currentStep <= 0) {
-            return;
+        if (this.currentSubStep > 0) {
+            this.currentSubStep--;
+            this.showCurrentStep();
         }
-        this.currentStep--;
-        this.showCurrentStep();
     }
     reset() {
-        this.currentStep = 0;
+        this.currentSubStep = 0;
         if (this.lab) {
             this.showCurrentStep();
         }
@@ -182,15 +188,51 @@ class LabController {
             req.on('timeout', () => { req.destroy(); resolve(false); });
         });
     }
+    /** Get the current slide entry (if any). */
+    currentEntry() {
+        return this.lab?.slides[String(this.currentSlide)];
+    }
+    /** Called when the browser panel reports a slide change. */
+    onSlideChanged(slide) {
+        if (!this.lab || !this.guidePanel) {
+            return;
+        }
+        this.log.info(`[LabController] Slide changed → ${slide}`);
+        this.currentSlide = slide;
+        this.currentSubStep = 0;
+        this.showCurrentStep();
+    }
     async showCurrentStep() {
         if (!this.lab || !this.guidePanel) {
             return;
         }
-        const step = this.lab.steps[this.currentStep];
-        this.statusBarItem.text = `$(book) Lab: ${this.currentStep + 1}/${this.lab.steps.length} — ${step.title}`;
+        const entry = this.currentEntry();
+        if (!entry || entry.steps.length === 0) {
+            // No lab content for this slide — show a passive follow-along message
+            this.statusBarItem.text = `$(book) Slide ${this.currentSlide}`;
+            this.guidePanel.postMessage({
+                type: 'setState',
+                step: {
+                    title: 'Follow Along',
+                    instruction: 'Review the content on the current slide. When you\'re ready, advance to the next slide.',
+                    focus: 'slides',
+                    index: 0,
+                    total: 1
+                }
+            });
+            return;
+        }
+        const step = entry.steps[this.currentSubStep];
+        const total = entry.steps.length;
+        this.statusBarItem.text = `$(book) Slide ${this.currentSlide} — Step ${this.currentSubStep + 1}/${total} — ${step.title}`;
         this.guidePanel.postMessage({
             type: 'setState',
-            step: { ...step, index: this.currentStep, total: this.lab.steps.length }
+            step: {
+                ...step,
+                index: this.currentSubStep,
+                total,
+                slide: this.currentSlide
+            }
         });
         // Execute step action(s), then re-focus the guide panel
         if (step.action) {
@@ -198,7 +240,6 @@ class LabController {
             for (const cmd of actions) {
                 await this.executeAction(cmd);
             }
-            // Re-reveal guide after a brief delay so the action's UI has time to render
             setTimeout(() => this.guidePanel?.reveal(), 300);
         }
     }
@@ -284,6 +325,9 @@ class LabController {
         if (msg.type === 'labGuide.startCourse' && msg.server && msg.course) {
             this.log.info(`[LabController] Course selected → server=${msg.server}, course=${msg.course}`);
             this.startLabFromUri(msg.server, msg.course);
+        }
+        else if (msg.type === 'slideChanged' && typeof msg.slide === 'number') {
+            this.onSlideChanged(msg.slide);
         }
         else {
             this.log.warn(`[LabController] Unhandled browser message: ${JSON.stringify(msg)}`);
