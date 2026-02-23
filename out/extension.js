@@ -37,7 +37,6 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const labController_1 = require("./labController");
-const cp = __importStar(require("child_process"));
 const PROFILE_NAME = 'Lab Guide';
 const SENTINEL_FILE = 'lab-guide-profile.marker';
 let controller;
@@ -69,18 +68,16 @@ function redirectToProfile() {
     log.info(`Not in Lab Guide profile — switching to --profile "${PROFILE_NAME}"`);
     const isInsiders = vscode.env.appName.toLowerCase().includes('insider');
     const binName = isInsiders ? 'code-insiders' : 'code';
-    // appRoot = .../resources/app → ../../bin to reach the install's bin folder.
-    const path = require('path');
-    const appBin = path.resolve(vscode.env.appRoot, '..', '..', 'bin', binName);
-    const cmd = `"${appBin}" --profile "${PROFILE_NAME}"`;
-    log.info(`Executing: ${cmd}`);
-    cp.exec(cmd, (err) => {
-        if (err) {
-            log.error(`exec failed: ${err.message}`);
-            vscode.window.showErrorMessage(`Could not switch profile automatically. ` +
-                `Run this in a terminal: ${binName} --profile "${PROFILE_NAME}"`);
-        }
+    // Use a hidden terminal — most reliable cross-platform way to invoke the CLI.
+    const term = vscode.window.createTerminal({
+        name: 'Lab Guide Profile',
+        hideFromUser: true,
     });
+    const cmd = `${binName} --profile "${PROFILE_NAME}"`;
+    log.info(`Sending to terminal: ${cmd}`);
+    term.sendText(cmd);
+    // Dispose after a short delay so the command has time to launch
+    setTimeout(() => term.dispose(), 5000);
     vscode.window.showInformationMessage(`Lab Guide needs its own profile to keep your settings safe. Switching to the "${PROFILE_NAME}" profile…`);
 }
 async function activate(context) {
