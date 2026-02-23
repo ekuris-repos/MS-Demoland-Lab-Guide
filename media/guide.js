@@ -33,7 +33,8 @@
   var edgeBottom      = document.getElementById('edgeBottom');
 
   /* ---- Opening animation state ---- */
-  var isOpening = true;
+  var savedState = vscode.getState() || {};
+  var isOpening = !savedState.opened;   // skip animation if already opened once
   var pendingFocus = null;
   var chaseEdges = [edgeTop, edgeRight, edgeBottom, edgeLeft];
 
@@ -139,20 +140,23 @@
     chaseEdges.forEach(function (el) {
       if (el) { el.classList.remove('edge-glow--chase'); }
     });
+    // Persist that the opening has played
+    vscode.setState(Object.assign({}, vscode.getState() || {}, { opened: true }));
     if (pendingFocus) {
       applyFocus(pendingFocus);
       pendingFocus = null;
     }
   }
 
-  // Start opening: edge chase + spinner
-  document.body.classList.add('opening');
-  chaseEdges.forEach(function (el) {
-    if (el) { el.classList.add('edge-glow--chase'); }
-  });
-
-  // Auto-dismiss after 2 full rotations (~3.2 s)
-  setTimeout(dismissOpening, 3200);
+  // Only play the opening animation on first launch, not on tab restore
+  if (isOpening) {
+    document.body.classList.add('opening');
+    chaseEdges.forEach(function (el) {
+      if (el) { el.classList.add('edge-glow--chase'); }
+    });
+    // Auto-dismiss after 2 full rotations (~3.2 s)
+    setTimeout(dismissOpening, 3200);
+  }
 
   /* ---- Tell extension we're alive ---- */
   vscode.postMessage({ type: 'ready' });
