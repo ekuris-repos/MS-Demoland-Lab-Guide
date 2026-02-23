@@ -1,7 +1,10 @@
 .vscode
 .vscode-test
 node_modules
-out
 src
 tsconfig.json
 **/*.map
+*.code-workspace
+.git
+.gitignore
+index.html

@@ -4,6 +4,12 @@
   "description": "Step-by-step lab guide panel with directional edge-glow arrows for hands-on training",
   "version": "0.1.0",
   "publisher": "ms-demoland",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ekuris-repos/MS-Demoland-Lab-Guide"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
