@@ -171,7 +171,7 @@ export class LabController {
     });
   }
 
-  private showCurrentStep() {
+  private async showCurrentStep() {
     if (!this.lab || !this.guidePanel) { return; }
 
     const step = this.lab.steps[this.currentStep];
@@ -182,12 +182,14 @@ export class LabController {
       step: { ...step, index: this.currentStep, total: this.lab.steps.length }
     });
 
-    // Execute step action(s)
+    // Execute step action(s), then re-focus the guide panel
     if (step.action) {
       const actions = Array.isArray(step.action) ? step.action : [step.action];
       for (const cmd of actions) {
-        this.executeAction(cmd);
+        await this.executeAction(cmd);
       }
+      // Re-reveal guide after a brief delay so the action's UI has time to render
+      setTimeout(() => this.guidePanel?.reveal(), 300);
     }
   }
 

@@ -36,6 +36,11 @@ export class GuidePanel {
     this.panel?.webview.postMessage(message);
   }
 
+  /** Bring the guide panel back to focus without recreating it. */
+  reveal() {
+    this.panel?.reveal(vscode.ViewColumn.Two, false);
+  }
+
   dispose() {
     this.panel?.dispose();
   }
