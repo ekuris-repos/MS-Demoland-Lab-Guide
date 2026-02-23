@@ -64,31 +64,24 @@ async function stampProfile(context) {
     await vscode.workspace.fs.writeFile(marker, Buffer.from('lab-guide-profile'));
     log.info('Sentinel written — this profile is now recognised as Lab Guide');
 }
-/** Launch a new VS Code window in the Lab Guide profile and return. */
+/** Open VS Code in the Lab Guide profile. */
 function redirectToProfile() {
-    log.info(`Not in Lab Guide profile — launching new window with --profile "${PROFILE_NAME}"`);
-    // Use the VS Code CLI path that ships with every install — avoids PATH issues
+    log.info(`Not in Lab Guide profile — switching to --profile "${PROFILE_NAME}"`);
     const isInsiders = vscode.env.appName.toLowerCase().includes('insider');
     const binName = isInsiders ? 'code-insiders' : 'code';
-    // On Windows the CLI is a .cmd script — use the full path from appRoot.
-    // appRoot = .../resources/app, so ../../bin gets us to the install's bin folder.
+    // appRoot = .../resources/app → ../../bin to reach the install's bin folder.
     const path = require('path');
     const appBin = path.resolve(vscode.env.appRoot, '..', '..', 'bin', binName);
-    log.info(`CLI path resolved: ${appBin}`);
-    const child = cp.spawn(`"${appBin}"`, ['--profile', `"${PROFILE_NAME}"`, '--new-window'], {
-        detached: true,
-        stdio: 'ignore',
-        shell: true,
+    const cmd = `"${appBin}" --profile "${PROFILE_NAME}"`;
+    log.info(`Executing: ${cmd}`);
+    cp.exec(cmd, (err) => {
+        if (err) {
+            log.error(`exec failed: ${err.message}`);
+            vscode.window.showErrorMessage(`Could not switch profile automatically. ` +
+                `Run this in a terminal: ${binName} --profile "${PROFILE_NAME}"`);
+        }
     });
-    child.on('error', (err) => {
-        log.error(`Failed to spawn CLI: ${err.message}`);
-        // Fall back to opening a terminal command the user can run manually
-        vscode.window.showErrorMessage(`Could not open a new window automatically. ` +
-            `Please run: code --profile "${PROFILE_NAME}" from a terminal.`);
-    });
-    child.unref();
-    vscode.window.showInformationMessage(`Lab Guide runs in its own VS Code profile to protect your workspace. ` +
-        `A new window is opening with the "${PROFILE_NAME}" profile.`);
+    vscode.window.showInformationMessage(`Lab Guide needs its own profile to keep your settings safe. Switching to the "${PROFILE_NAME}" profile…`);
 }
 async function activate(context) {
     log.info('Lab Guide extension activating…');
