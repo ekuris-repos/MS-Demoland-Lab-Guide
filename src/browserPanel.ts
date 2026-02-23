@@ -255,6 +255,8 @@ export class BrowserPanel {
     let modified = html;
     // Inject <base> after <head> so relative URLs resolve to the remote server
     modified = modified.replace(/<head([^>]*)>/i, `<head$1>\n<base href="${escapeHtml(base)}/">`);
+    // Rewrite relative fetch() calls to absolute URLs (fetch doesn't use <base> in webviews)
+    modified = modified.replace(/fetch\(\s*['"]api\//g, `fetch('${base}/api/`);
     // Remove the original catalog script that fires vscode:// URIs into the system browser.
     // It conflicts with our injected handler since the webview is not an iframe.
     modified = modified.replace(
