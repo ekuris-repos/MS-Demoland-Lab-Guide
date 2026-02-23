@@ -233,10 +233,9 @@ export class LabController {
     this.guidePanel?.dispose();
     this.guidePanel = undefined;
 
-    // Close sidebar (Extensions pane, Explorer, etc.)
-    await vscode.commands.executeCommand('workbench.action.closeSidebar');
-    // Close panel area (Terminal, Output, Problems, etc.)
-    await vscode.commands.executeCommand('workbench.action.closePanel');
+    // Remove workspace folders (keeps files on disk for fast re-clone)
+    await this.closeAllWorkspaceFolders();
+
     this.log.info('[LabController] Cleanup complete ✓');
   }
 
