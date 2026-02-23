@@ -236,7 +236,8 @@ export class LabController {
           focus: 'left',
           focusLabel: { left: 'Advance the slides' },
           index: 0,
-          total: 1
+          total: 1,
+          slide: this.currentSlide
         }
       });
       return;
