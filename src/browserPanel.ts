@@ -210,8 +210,9 @@ export class BrowserPanel {
         // Then navigate back to catalog
         this.log.info('[BrowserPanel] Returning to catalog');
         this.showCatalog(this.catalogUrl);
-        // Reveal this panel and close any other lingering editors
+        // Reveal this panel and close any lingering editors in all groups
         this.panel!.reveal(vscode.ViewColumn.One);
+        await vscode.commands.executeCommand('workbench.action.closeEditorsInOtherGroups');
         await vscode.commands.executeCommand('workbench.action.closeOtherEditors');
         return;
       }
