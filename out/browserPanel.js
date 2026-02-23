@@ -161,6 +161,10 @@ class BrowserPanel {
             if (msg.type === 'iframeNavigated' && this.catalogUrl) {
                 this.log.info('[BrowserPanel] Iframe navigated away from slides, returning to catalog');
                 this.showCatalog(this.catalogUrl);
+                // Forward to controller so it can clean up
+                if (this.messageHandler) {
+                    this.messageHandler(msg);
+                }
                 return;
             }
             if (this.messageHandler) {

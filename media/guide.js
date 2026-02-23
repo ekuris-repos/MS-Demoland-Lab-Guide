@@ -40,23 +40,23 @@
 
   /* ---- Focus zone → UI mapping ---- */
   var focusMap = {
-    slides:   { arrows: ['left'],  edges: ['left'],   labels: { left: 'Slides' } },
-    chat:     { arrows: ['right'], edges: ['right'],  labels: { right: 'Copilot Chat' } },
-    terminal: { arrows: ['down'],  edges: ['bottom'], labels: { down: 'Terminal' } },
-    editor:   { arrows: ['up'],    edges: ['top'],    labels: { up: 'Editor' } },
-    guide:    { arrows: [],        edges: [],         labels: {} }
+    left:   { arrows: ['left'],  edges: ['left']   },
+    right:  { arrows: ['right'], edges: ['right']  },
+    top:    { arrows: ['up'],    edges: ['top']    },
+    up:     { arrows: ['up'],    edges: ['top']    },
+    bottom: { arrows: ['down'],  edges: ['bottom'] },
+    down:   { arrows: ['down'],  edges: ['bottom'] }
   };
 
-  /* Zone → colour (matches CSS focus-zone presets) */
+  /* Direction → colour */
   var zoneColors = {
-    slides:   '#00A4EF',
-    chat:     '#7FBA00',
-    terminal: '#FFB900',
-    editor:   '#F25022'
+    left:   '#00A4EF',
+    right:  '#7FBA00',
+    top:    '#F25022',
+    up:     '#F25022',
+    bottom: '#FFB900',
+    down:   '#FFB900'
   };
-
-  /* Edge/arrow direction → zone lookup (for per-edge colouring) */
-  var directionToZone = { left: 'slides', right: 'chat', bottom: 'terminal', top: 'editor', down: 'terminal', up: 'editor' };
 
   /* ---- Extension → Webview messages ---- */
   window.addEventListener('message', function (event) {
@@ -99,36 +99,45 @@
       stepTip.classList.remove('step-tip--visible');
     }
 
-    // Nav buttons
-    prevBtn.disabled = step.index === 0;
-    nextBtn.disabled = step.index === step.total - 1;
+    // Nav buttons — hide entirely when there's only one (or no) step
+    if (step.total <= 1) {
+      prevBtn.style.display = 'none';
+      nextBtn.style.display = 'none';
+    } else {
+      prevBtn.style.display = '';
+      nextBtn.style.display = '';
+      prevBtn.disabled = step.index === 0;
+      nextBtn.disabled = step.index === step.total - 1;
+    }
 
-    // Focus zone
-    var focus = step.focus || 'guide';
+    // Focus zone — empty or absent means no arrows (self-focus)
+    var focus = step.focus || [];
+    var focusLabelOverride = step.focusLabel || null;
+    // Normalize to array
+    if (typeof focus === 'string') { focus = focus.length ? [focus] : []; }
     if (isOpening) {
       pendingFocus = focus;
     } else {
-      applyFocus(focus);
+      applyFocus(focus, focusLabelOverride);
     }
   }
 
   /* ---- Apply focus zone: edge glow + arrows ---- */
-  function applyFocus(zone) {
-    // Support multiple zones (string or array)
-    var zones = Array.isArray(zone) ? zone : [zone];
+  function applyFocus(zones, labelOverride) {
+    // Ensure array
+    if (!Array.isArray(zones)) { zones = zones ? [zones] : []; }
 
     // Set data attribute to first zone for CSS colour variable
-    document.body.setAttribute('data-focus', zones[0]);
+    document.body.setAttribute('data-focus', zones[0] || '');
 
     // Merge all mappings
     var allArrows = [];
     var allEdges  = [];
-    var allLabels = {};
     zones.forEach(function(z) {
-      var m = focusMap[z] || focusMap.guide;
+      var m = focusMap[z];
+      if (!m) return;
       m.arrows.forEach(function(a) { if (allArrows.indexOf(a) === -1) allArrows.push(a); });
       m.edges.forEach(function(e)  { if (allEdges.indexOf(e) === -1) allEdges.push(e); });
-      Object.keys(m.labels).forEach(function(k) { allLabels[k] = m.labels[k]; });
     });
 
     // Arrows
@@ -153,16 +162,17 @@
     ];
     edgePairs.forEach(function(pair) {
       var edge = pair[0], arrow = pair[1], dir = pair[2];
-      var color = multi ? (zoneColors[directionToZone[dir]] || '') : '';
+      var color = multi ? (zoneColors[dir] || '') : '';
       if (edge) { edge.style.setProperty('--glow-color', color || ''); }
       if (arrow) { arrow.style.setProperty('--glow-color', color || ''); }
     });
 
-    // Labels
-    if (allLabels.left)  { arrowLeftLabel.textContent  = allLabels.left; }
-    if (allLabels.right) { arrowRightLabel.textContent = allLabels.right; }
-    if (allLabels.up)    { arrowUpLabel.textContent    = allLabels.up; }
-    if (allLabels.down)  { arrowDownLabel.textContent  = allLabels.down; }
+    // Labels — clear all, then apply overrides from lab.json (focusLabel)
+    var labels = labelOverride || {};
+    arrowLeftLabel.textContent  = labels.left  || '';
+    arrowRightLabel.textContent = labels.right || '';
+    arrowUpLabel.textContent    = labels.up    || '';
+    arrowDownLabel.textContent  = labels.down  || '';
   }
 
   function toggleActive(el, active) {

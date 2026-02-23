@@ -6,6 +6,7 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
+        "--profile=Lab Guide",
         "--extensionDevelopmentPath=${workspaceFolder:MS-Demoland-Lab-Guide}",
         "${workspaceFolder:MS Demoland}/MS Demoland GHCP Training.code-workspace"
       ],

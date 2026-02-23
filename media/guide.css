@@ -390,7 +390,7 @@ body {
 .step-nav {
   flex-shrink: 0;
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
   padding-top: 16px;
   border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.2));
   margin-top: auto;
@@ -501,17 +501,16 @@ body:not(.opening) .opening-overlay {
    Focus-zone colour presets
    ========================================================================== */
 
-/* Slides (left) — blue */
-body[data-focus="slides"] { --glow-color: #00A4EF; }
+/* Left — blue */
+body[data-focus="left"]   { --glow-color: #00A4EF; }
 
-/* Chat (right) — green */
-body[data-focus="chat"]   { --glow-color: #7FBA00; }
+/* Right — green */
+body[data-focus="right"]  { --glow-color: #7FBA00; }
 
-/* Terminal (bottom) — yellow */
-body[data-focus="terminal"] { --glow-color: #FFB900; }
+/* Bottom / Down — yellow */
+body[data-focus="bottom"],
+body[data-focus="down"]   { --glow-color: #FFB900; }
 
-/* Editor (center-self) — red */
-body[data-focus="editor"] { --glow-color: #F25022; }
-
-/* Guide (no direction, self) — keep default subtle */
-body[data-focus="guide"]  { --glow-color: var(--vscode-focusBorder, #007fd4); }
+/* Top / Up — red */
+body[data-focus="top"],
+body[data-focus="up"]     { --glow-color: #F25022; }

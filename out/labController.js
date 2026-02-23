@@ -152,6 +152,24 @@ class LabController {
         this.browserPanel.dispose();
         this.statusBarItem.dispose();
     }
+    /** Clean up all lab state and panels when returning to the catalog. */
+    async returnToCatalog() {
+        this.log.info('[LabController] Returning to catalog — cleaning up');
+        this.lab = undefined;
+        this.currentSlide = 1;
+        this.currentSubStep = 0;
+        this.statusBarItem.hide();
+        // Close the guide panel
+        this.guidePanel?.dispose();
+        this.guidePanel = undefined;
+        // Close all editor tabs (untitled files, settings, etc.)
+        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+        // Close sidebar (Extensions pane, Explorer, etc.)
+        await vscode.commands.executeCommand('workbench.action.closeSidebar');
+        // Close panel area (Terminal, Output, Problems, etc.)
+        await vscode.commands.executeCommand('workbench.action.closePanel');
+        this.log.info('[LabController] Cleanup complete ✓');
+    }
     // ── Fetch JSON from a URL ─────────────────────────────────────
     fetchJson(url) {
         return new Promise((resolve) => {
@@ -208,14 +226,15 @@ class LabController {
         }
         const entry = this.currentEntry();
         if (!entry || entry.steps.length === 0) {
-            // No lab content for this slide — show a passive follow-along message
+            // No lab content for this slide — point to the slides and let them drive
             this.statusBarItem.text = `$(book) Slide ${this.currentSlide}`;
             this.guidePanel.postMessage({
                 type: 'setState',
                 step: {
                     title: 'Follow Along',
                     instruction: 'Review the content on the current slide. When you\'re ready, advance to the next slide.',
-                    focus: 'slides',
+                    focus: 'left',
+                    focusLabel: { left: 'Advance the slides' },
                     index: 0,
                     total: 1
                 }
@@ -328,6 +347,9 @@ class LabController {
         }
         else if (msg.type === 'slideChanged' && typeof msg.slide === 'number') {
             this.onSlideChanged(msg.slide);
+        }
+        else if (msg.type === 'iframeNavigated') {
+            this.returnToCatalog();
         }
         else {
             this.log.warn(`[LabController] Unhandled browser message: ${JSON.stringify(msg)}`);
