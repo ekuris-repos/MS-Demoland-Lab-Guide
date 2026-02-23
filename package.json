@@ -69,6 +69,11 @@
     "configuration": {
       "title": "Lab Guide",
       "properties": {
+        "labGuide.profileActive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Set to true inside the Lab Guide profile — the extension will not activate without it"
+        },
         "labGuide.catalogUrl": {
           "type": "string",
           "default": "https://ekuris-repos.github.io/MS-Demoland/",
