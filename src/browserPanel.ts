@@ -41,7 +41,7 @@ export class BrowserPanel {
     this.panel!.webview.html = this.injectCatalogHandler(html, url);
   }
 
-  /** Show course slides: fetch HTML, inject detection, display directly. */
+  /** Show course slides: fetch HTML + JS, inject detection, display directly. */
   async showSlides(url: string) {
     this.log.info(`[BrowserPanel] showSlides(${url})`);
     this.currentUrl = url;
@@ -62,7 +62,7 @@ export class BrowserPanel {
     }
 
     this.log.info(`[BrowserPanel] Slides HTML fetched (${html.length} bytes), injecting handler`);
-    this.panel!.webview.html = this.injectSlidesHandler(html, url);
+    this.panel!.webview.html = await this.injectSlidesHandler(html, url);
   }
 
   /** Reload the current content. */
@@ -111,61 +111,74 @@ export class BrowserPanel {
     this.panel.onDidDispose(() => { this.panel = undefined; });
   }
 
-  /** Inject <base> tag, CSP, and slide-change detection into fetched slides HTML. */
-  private injectSlidesHandler(html: string, slidesUrl: string): string {
+  /** Inject <base> tag, inline external scripts, and slide-change detection into fetched slides HTML. */
+  private async injectSlidesHandler(html: string, slidesUrl: string): Promise<string> {
     const base = slidesUrl.replace(/\/?$/, '/');
     const nonce = getNonce();
 
     let modified = html;
 
-    // Inject <base> after <head> so relative URLs (CSS, JS, images) resolve to the remote server
+    // Inject <base> after <head> so relative URLs (CSS, images) resolve to the remote server
     modified = modified.replace(/<head([^>]*)>/i, `<head$1>\n<base href="${escapeHtml(base)}">`);
 
-    // Remove any existing CSP meta tags — we'll add our own
+    // Remove any existing CSP meta tags
     modified = modified.replace(/<meta[^>]*Content-Security-Policy[^>]*>/gi, '');
 
-    // Add a CSP that allows the remote origin's CSS/JS/images plus our nonce for inline scripts.
-    // Parse the origin from the URL.
+    // Webview-compatible CSP: nonce-only for scripts, remote origin for styles/images
     let origin: string;
     try { origin = new URL(base).origin; } catch { origin = 'https://ekuris-repos.github.io'; }
     const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; `
-      + `script-src 'nonce-${nonce}' ${origin}; `
+      + `script-src 'nonce-${nonce}'; `
       + `style-src 'unsafe-inline' ${origin}; `
       + `img-src https: data:; `
       + `font-src https: data:;">`;
     modified = modified.replace(/<base[^>]*>/, match => match + '\n' + csp);
 
-    // Remove type="module" from script tags so they load as classic scripts (webview compat)
-    modified = modified.replace(/<script\s+type="module"/gi, '<script');
+    // Fetch and inline all external <script> tags so they run under the nonce
+    const scriptTagRe = /<script[^>]*\bsrc=["']([^"']+)["'][^>]*><\/script>/gi;
+    let match: RegExpExecArray | null;
+    const replacements: { original: string; src: string }[] = [];
+    while ((match = scriptTagRe.exec(modified)) !== null) {
+      replacements.push({ original: match[0], src: match[1] });
+    }
 
-    // Suppress the extension banner — slides.js shows it when window === window.parent,
-    // but in a webview window !== window.parent so the banner would appear. We'll remove it.
-    // Also intercept home navigation and detect slide changes.
+    for (const rep of replacements) {
+      // Resolve relative src against the base URL
+      let scriptUrl: string;
+      try { scriptUrl = new URL(rep.src, base).href; } catch { continue; }
+      this.log.info(`[BrowserPanel] Fetching script: ${scriptUrl}`);
+      const scriptContent = await this.fetchText(scriptUrl);
+      if (scriptContent) {
+        modified = modified.replace(rep.original, `<script nonce="${nonce}">\n${scriptContent}\n</script>`);
+        this.log.info(`[BrowserPanel] Inlined script: ${scriptUrl} (${scriptContent.length} bytes)`);
+      } else {
+        this.log.warn(`[BrowserPanel] Failed to fetch script: ${scriptUrl}`);
+      }
+    }
+
+    // Our slide detection handler — intercepts replaceState, home button, and extension banner
     const handler = /*html*/ `
 <script nonce="${nonce}">
 (function() {
   var vscode = acquireVsCodeApi();
-  console.log('[Slides] Detection script loaded');
 
   // Intercept history.replaceState to detect slide changes
   var origReplace = history.replaceState.bind(history);
   history.replaceState = function(state, title, url) {
     origReplace(state, title, url);
-    var m = (url || '').match(/#slide-(\\d+)/);
+    var m = String(url || '').match(/#slide-(\\d+)/);
     if (m) {
       var slide = parseInt(m[1], 10);
-      console.log('[Slides] Slide changed → ' + slide);
       vscode.postMessage({ type: 'slideChanged', slide: slide });
     }
   };
 
-  // Intercept home button click (first button in .slide-nav) and keyboard 'h'/'H'
+  // Intercept home button click and keyboard 'h'/'H'
   document.addEventListener('click', function(e) {
     var btn = e.target.closest && e.target.closest('.slide-nav button:first-child');
     if (btn) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      console.log('[Slides] Home button clicked → returning to catalog');
       vscode.postMessage({ type: 'iframeNavigated' });
     }
   }, true);
@@ -174,7 +187,6 @@ export class BrowserPanel {
     if ((e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      console.log('[Slides] Home key pressed → returning to catalog');
       vscode.postMessage({ type: 'iframeNavigated' });
     }
   }, true);
@@ -189,13 +201,12 @@ export class BrowserPanel {
     // Send initial slide
     var m = location.hash.match(/#slide-(\\d+)/);
     var slide = m ? parseInt(m[1], 10) : 1;
-    console.log('[Slides] Initial slide → ' + slide);
     vscode.postMessage({ type: 'slideChanged', slide: slide });
   });
 })();
 </script>`;
 
-    // Inject our handler BEFORE the slides.js script so replaceState is intercepted first
+    // Inject our detection handler into <head> — BEFORE slides.js so replaceState is patched first
     modified = modified.replace(/<\/head>/i, handler + '\n</head>');
 
     return modified;
