@@ -267,7 +267,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 20px 72px;          /* generous padding to leave room for arrows */
+  padding: 72px 72px;          /* clear arrow zones: 64px sides, 56px top/bottom + label space */
   min-height: 0;
   overflow-y: auto;
 }
