@@ -66,8 +66,13 @@ function activate(context) {
     const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl');
     log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
     if (catalogUrl) {
-        log.info('Closing all editors to initialize workspace');
-        vscode.commands.executeCommand('workbench.action.closeAllEditors').then(() => {
+        log.info('Cleaning up previous workspace state');
+        // Close all editor tabs
+        vscode.commands.executeCommand('workbench.action.closeAllEditors').then(async () => {
+            // Close sidebar (Extensions pane, Explorer, etc.)
+            await vscode.commands.executeCommand('workbench.action.closeSidebar');
+            // Close panel area (Terminal, Output, Problems, etc.)
+            await vscode.commands.executeCommand('workbench.action.closePanel');
             log.info(`Opening catalog → ${catalogUrl}`);
             controller.openCatalog(catalogUrl);
         });
