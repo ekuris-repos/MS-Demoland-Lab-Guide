@@ -35,15 +35,32 @@ async function stampProfile(context: vscode.ExtensionContext): Promise<void> {
 function redirectToProfile() {
   log.info(`Not in Lab Guide profile — launching new window with --profile "${PROFILE_NAME}"`);
 
-  // Determine the correct CLI binary (code vs code-insiders)
+  // Use the VS Code CLI path that ships with every install — avoids PATH issues
   const isInsiders = vscode.env.appName.toLowerCase().includes('insider');
-  const cli = isInsiders ? 'code-insiders' : 'code';
+  const binName = isInsiders ? 'code-insiders' : 'code';
 
-  cp.spawn(cli, ['--profile', PROFILE_NAME], {
+  // On Windows the CLI is a .cmd script — use the full path from appRoot.
+  // appRoot = .../resources/app, so ../../bin gets us to the install's bin folder.
+  const path = require('path');
+  const appBin = path.resolve(vscode.env.appRoot, '..', '..', 'bin', binName);
+  log.info(`CLI path resolved: ${appBin}`);
+
+  const child = cp.spawn(`"${appBin}"`, ['--profile', `"${PROFILE_NAME}"`, '--new-window'], {
     detached: true,
     stdio: 'ignore',
     shell: true,
-  }).unref();
+  });
+
+  child.on('error', (err) => {
+    log.error(`Failed to spawn CLI: ${err.message}`);
+    // Fall back to opening a terminal command the user can run manually
+    vscode.window.showErrorMessage(
+      `Could not open a new window automatically. ` +
+      `Please run: code --profile "${PROFILE_NAME}" from a terminal.`
+    );
+  });
+
+  child.unref();
 
   vscode.window.showInformationMessage(
     `Lab Guide runs in its own VS Code profile to protect your workspace. ` +
