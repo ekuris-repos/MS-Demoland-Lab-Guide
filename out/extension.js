@@ -37,11 +37,48 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const labController_1 = require("./labController");
+const cp = __importStar(require("child_process"));
+const PROFILE_NAME = 'Lab Guide';
 let controller;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
+/** True when running inside a named VS Code profile (not Default). */
+function isInNamedProfile(context) {
+    // Named profiles store globalStorage under .../profiles/<hash>/globalStorage/
+    // The default profile uses .../User/globalStorage/ (no "profiles" segment).
+    return context.globalStorageUri.path.includes('/profiles/');
+}
+/** Launch a new VS Code window in the Lab Guide profile and return. */
+function redirectToProfile() {
+    log.info(`Not in a named profile — launching new window with --profile "${PROFILE_NAME}"`);
+    // Determine the correct CLI binary (code vs code-insiders)
+    const isInsiders = vscode.env.appName.toLowerCase().includes('insider');
+    const cli = isInsiders ? 'code-insiders' : 'code';
+    cp.spawn(cli, ['--profile', PROFILE_NAME], {
+        detached: true,
+        stdio: 'ignore',
+        shell: true,
+    }).unref();
+    vscode.window.showInformationMessage(`Lab Guide runs in its own VS Code profile to protect your workspace. ` +
+        `A new window is opening with the "${PROFILE_NAME}" profile.`);
+}
 function activate(context) {
     log.info('Lab Guide extension activating…');
     context.subscriptions.push(log);
+    // ── Profile gate ──────────────────────────────────────────────
+    if (!isInNamedProfile(context)) {
+        // Register a minimal URI handler so vscode:// links still work
+        // from the default profile — they just redirect to the Lab Guide profile.
+        context.subscriptions.push(vscode.window.registerUriHandler({
+            handleUri(_uri) {
+                log.info('URI received in default profile — redirecting to Lab Guide profile');
+                redirectToProfile();
+            }
+        }));
+        redirectToProfile();
+        log.info('Redirected to Lab Guide profile — skipping activation in default profile.');
+        return;
+    }
+    log.info('Running inside a named profile ✓');
     controller = new labController_1.LabController(context, log);
     log.info('LabController created');
     // ── Commands ──────────────────────────────────────────────────
