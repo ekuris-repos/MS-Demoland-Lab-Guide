@@ -30,23 +30,25 @@ async function stampProfile(context: vscode.ExtensionContext): Promise<void> {
   log.info('Sentinel written — this profile is now recognised as Lab Guide');
 }
 
-/** Open VS Code in the Lab Guide profile. */
+/** Open VS Code in the Lab Guide profile with the extension installed. */
 function redirectToProfile() {
   log.info(`Not in Lab Guide profile — switching to --profile "${PROFILE_NAME}"`);
 
   const isInsiders = vscode.env.appName.toLowerCase().includes('insider');
   const binName = isInsiders ? 'code-insiders' : 'code';
+  const extId = 'ms-demoland.lab-guide';
 
   // Use a hidden terminal — most reliable cross-platform way to invoke the CLI.
   const term = vscode.window.createTerminal({
     name: 'Lab Guide Profile',
     hideFromUser: true,
   });
-  const cmd = `${binName} --profile "${PROFILE_NAME}"`;
+  // Install the extension into the target profile so it activates there too
+  const cmd = `${binName} --profile "${PROFILE_NAME}" --install-extension ${extId}`;
   log.info(`Sending to terminal: ${cmd}`);
   term.sendText(cmd);
   // Dispose after a short delay so the command has time to launch
-  setTimeout(() => term.dispose(), 5000);
+  setTimeout(() => term.dispose(), 10000);
 
   vscode.window.showInformationMessage(
     `Lab Guide needs its own profile to keep your settings safe. Switching to the "${PROFILE_NAME}" profile…`
