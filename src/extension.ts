@@ -3,20 +3,37 @@ import { LabController } from './labController';
 import * as cp from 'child_process';
 
 const PROFILE_NAME = 'Lab Guide';
+const SENTINEL_FILE = 'lab-guide-profile.marker';
 
 let controller: LabController | undefined;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
 
-/** True when running inside a named VS Code profile (not Default). */
-function isInNamedProfile(context: vscode.ExtensionContext): boolean {
-  // Named profiles store globalStorage under .../profiles/<hash>/globalStorage/
-  // The default profile uses .../User/globalStorage/ (no "profiles" segment).
-  return context.globalStorageUri.path.includes('/profiles/');
+/**
+ * Check for a sentinel file in globalStorage that proves we're in the
+ * Lab Guide profile.  Any other profile (default, "Python", "Work", etc.)
+ * won't have this file and will be redirected.
+ */
+async function isLabGuideProfile(context: vscode.ExtensionContext): Promise<boolean> {
+  const marker = vscode.Uri.joinPath(context.globalStorageUri, SENTINEL_FILE);
+  try {
+    await vscode.workspace.fs.stat(marker);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Write the sentinel so future activations in this profile are recognised. */
+async function stampProfile(context: vscode.ExtensionContext): Promise<void> {
+  await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+  const marker = vscode.Uri.joinPath(context.globalStorageUri, SENTINEL_FILE);
+  await vscode.workspace.fs.writeFile(marker, Buffer.from('lab-guide-profile'));
+  log.info('Sentinel written — this profile is now recognised as Lab Guide');
 }
 
 /** Launch a new VS Code window in the Lab Guide profile and return. */
 function redirectToProfile() {
-  log.info(`Not in a named profile — launching new window with --profile "${PROFILE_NAME}"`);
+  log.info(`Not in Lab Guide profile — launching new window with --profile "${PROFILE_NAME}"`);
 
   // Determine the correct CLI binary (code vs code-insiders)
   const isInsiders = vscode.env.appName.toLowerCase().includes('insider');
@@ -34,28 +51,46 @@ function redirectToProfile() {
   );
 }
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
   log.info('Lab Guide extension activating…');
   context.subscriptions.push(log);
 
   // ── Profile gate ──────────────────────────────────────────────
-  if (!isInNamedProfile(context)) {
-    // Register a minimal URI handler so vscode:// links still work
-    // from the default profile — they just redirect to the Lab Guide profile.
-    context.subscriptions.push(
-      vscode.window.registerUriHandler({
-        handleUri(_uri: vscode.Uri) {
-          log.info('URI received in default profile — redirecting to Lab Guide profile');
-          redirectToProfile();
-        }
-      })
-    );
+  const inLabProfile = await isLabGuideProfile(context);
 
-    redirectToProfile();
-    log.info('Redirected to Lab Guide profile — skipping activation in default profile.');
-    return;
+  if (!inLabProfile) {
+    // Check if this is the FIRST activation inside the newly-created
+    // Lab Guide profile (no sentinel yet, but user just got redirected).
+    // Heuristic: if the profile is named and has no sentinel, ask the user
+    // whether to stamp it.  Or: if this is a fresh profile (no previous
+    // extensions/settings), auto-stamp.
+    //
+    // Simplest safe approach: if we're in a named profile (not default),
+    // stamp it — the user was just redirected here.  If we're in the
+    // default profile, redirect.
+    const isNamed = context.globalStorageUri.path.includes('/profiles/');
+    if (isNamed) {
+      log.info('First activation in a named profile — stamping as Lab Guide');
+      await stampProfile(context);
+      // fall through to normal activation
+    } else {
+      // Register a minimal URI handler so vscode:// links still work
+      // from the default profile — they just redirect to the Lab Guide profile.
+      context.subscriptions.push(
+        vscode.window.registerUriHandler({
+          handleUri(_uri: vscode.Uri) {
+            log.info('URI received in default profile — redirecting to Lab Guide profile');
+            redirectToProfile();
+          }
+        })
+      );
+
+      redirectToProfile();
+      log.info('Redirected to Lab Guide profile — skipping activation in default profile.');
+      return;
+    }
   }
-  log.info('Running inside a named profile ✓');
+  log.info('Running inside Lab Guide profile ✓');
 
   controller = new LabController(context, log);
   log.info('LabController created');
