@@ -68,6 +68,12 @@
     if (msg.type === 'setTitle') {
       labTitle.textContent = msg.title;
     }
+    if (msg.type === 'glowNext') {
+      nextBtn.classList.remove('step-btn--glow');
+      // Force reflow so the animation restarts if already playing
+      void nextBtn.offsetWidth;
+      nextBtn.classList.add('step-btn--glow');
+    }
   });
 
   /* ---- Step navigation (dismiss opening on user action) ---- */

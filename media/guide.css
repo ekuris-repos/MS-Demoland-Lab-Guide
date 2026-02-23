@@ -426,6 +426,14 @@ body {
   background: var(--vscode-button-hoverBackground, #0062a3);
 }
 
+.step-btn--glow {
+  animation: btnGlow 1.5s ease-in-out 3;
+}
+@keyframes btnGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(56,139,253,0.3); }
+  50%      { box-shadow: 0 0 16px rgba(56,139,253,0.8), 0 0 32px rgba(56,139,253,0.4); }
+}
+
 /* ==========================================================================
    Opening Animation — clockwise edge-glow chase + centre spinner
    ========================================================================== */

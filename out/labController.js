@@ -233,6 +233,12 @@ class LabController {
         this.currentSubStep = 0;
         this.showCurrentStep();
     }
+    /** Tell the browser panel whether there are remaining sub-steps on this slide. */
+    updateExtraStepsFlag() {
+        const entry = this.currentEntry();
+        const hasExtra = !!entry && entry.steps.length > 1 && this.currentSubStep < entry.steps.length - 1;
+        this.browserPanel.postMessage({ type: 'setExtraSteps', hasExtra });
+    }
     async showCurrentStep() {
         if (!this.lab || !this.guidePanel) {
             return;
@@ -253,6 +259,7 @@ class LabController {
                     slide: this.currentSlide
                 }
             });
+            this.updateExtraStepsFlag();
             return;
         }
         const step = entry.steps[this.currentSubStep];
@@ -267,6 +274,7 @@ class LabController {
                 slide: this.currentSlide
             }
         });
+        this.updateExtraStepsFlag();
         // Execute step action(s), then re-focus the guide panel
         if (step.action) {
             const actions = Array.isArray(step.action) ? step.action : [step.action];
@@ -395,6 +403,10 @@ class LabController {
         }
         else if (msg.type === 'slideChanged' && typeof msg.slide === 'number') {
             this.onSlideChanged(msg.slide);
+        }
+        else if (msg.type === 'extraStepsBlocked') {
+            this.log.info('[LabController] Nav-next blocked — extra steps remain, sending glow');
+            this.guidePanel?.postMessage({ type: 'glowNext' });
         }
         else if (msg.type === 'iframeNavigated') {
             this.returnToCatalog();

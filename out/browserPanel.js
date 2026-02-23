@@ -102,6 +102,17 @@ class BrowserPanel {
     .nav-bar .home-btn { font-size: 16px; padding: 4px 8px; }
     .nav-bar .notes-btn { padding: 4px 8px; }
     .nav-bar .notes-btn.active { background: #388bfd; border-color: #388bfd; color: #fff; }
+    .float-hint {
+      position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%);
+      background: #388bfd; color: #fff; font-size: 12px; font-weight: 600;
+      padding: 5px 14px; border-radius: 6px; white-space: nowrap;
+      pointer-events: none; animation: floatUp 2s ease-out forwards;
+      box-shadow: 0 2px 12px rgba(56,139,253,0.5);
+    }
+    @keyframes floatUp {
+      0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+      100% { opacity: 0; transform: translateX(-50%) translateY(-60px); }
+    }
   </style>
 </head>
 <body>
@@ -127,11 +138,20 @@ class BrowserPanel {
       var currentSlide = 1;
       var totalSlides = 0;
       var notesOn = false;
+      var hasExtraSteps = false;
 
       function updateUI() {
         prevBtn.disabled = currentSlide <= 1;
         nextBtn.disabled = totalSlides > 0 && currentSlide >= totalSlides;
         counterEl.textContent = currentSlide + ' / ' + (totalSlides || '?');
+      }
+
+      function showFloatHint() {
+        var hint = document.createElement('div');
+        hint.className = 'float-hint';
+        hint.textContent = 'Extra steps available!';
+        document.body.appendChild(hint);
+        hint.addEventListener('animationend', function() { hint.remove(); });
       }
 
       // Listen for init message from slides.js (total count)
@@ -142,6 +162,8 @@ class BrowserPanel {
           updateUI();
         } else if (e.data.type === 'goHome') {
           vscode.postMessage({ type: 'iframeNavigated' });
+        } else if (e.data.type === 'setExtraSteps') {
+          hasExtraSteps = !!e.data.hasExtra;
         }
       });
 
@@ -155,6 +177,11 @@ class BrowserPanel {
       });
 
       nextBtn.addEventListener('click', function() {
+        if (hasExtraSteps) {
+          showFloatHint();
+          vscode.postMessage({ type: 'extraStepsBlocked' });
+          return;
+        }
         if (totalSlides === 0 || currentSlide < totalSlides) {
           currentSlide++;
           iframe.contentWindow.postMessage({ type: 'navigate', direction: 'next' }, '*');
@@ -193,6 +220,10 @@ class BrowserPanel {
   </script>
 </body>
 </html>`;
+    }
+    /** Send a message to the browser webview (e.g. setExtraSteps). */
+    postMessage(message) {
+        this.panel?.webview.postMessage(message);
     }
     /** Reload the current content. */
     async refresh() {
