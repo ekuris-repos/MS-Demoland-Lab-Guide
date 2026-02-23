@@ -65,26 +65,122 @@ class BrowserPanel {
         this.log.info(`[BrowserPanel] Catalog HTML fetched (${html.length} bytes), injecting handler`);
         this.panel.webview.html = this.injectCatalogHandler(html, url);
     }
-    /** Show course slides: fetch HTML + JS, inject detection, display directly. */
-    async showSlides(url) {
+    /** Show course slides in an iframe with an external nav bar. */
+    showSlides(url) {
         this.log.info(`[BrowserPanel] showSlides(${url})`);
         this.currentUrl = url;
         this.ensurePanel();
         const parts = url.replace(/\/+$/, '').split('/');
         const name = parts[parts.length - 1]?.replace(/-/g, ' ') || 'Course';
         this.panel.title = name;
-        this.log.info(`[BrowserPanel] Fetching slides HTML from ${url}`);
-        const html = await this.fetchText(url);
-        if (!html) {
-            this.log.error(`[BrowserPanel] Failed to fetch slides from ${url}`);
-            this.panel.webview.html = `<!DOCTYPE html><html><body style="color:#ccc;padding:2em;">
-        <h2>Could not load slides</h2>
-        <p>Failed to fetch <code>${escapeHtml(url)}</code></p>
-      </body></html>`;
-            return;
+        this.log.info(`[BrowserPanel] Showing slides with nav bar: ${url}`);
+        const nonce = getNonce();
+        this.panel.webview.html = /*html*/ `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; frame-src https: http:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+  <style nonce="${nonce}">
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; display: flex; flex-direction: column; background: #0d1117; }
+    iframe { flex: 1; width: 100%; border: none; }
+    .nav-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 12px; background: #161b22; border-top: 1px solid #30363d;
+      color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 13px; user-select: none;
+    }
+    .nav-bar button {
+      background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+      border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 13px;
+      transition: background 0.15s;
+    }
+    .nav-bar button:hover:not(:disabled) { background: #30363d; }
+    .nav-bar button:disabled { opacity: 0.4; cursor: default; }
+    .nav-bar .nav-center { display: flex; align-items: center; gap: 8px; }
+    .nav-bar .home-btn { font-size: 16px; padding: 4px 8px; }
+  </style>
+</head>
+<body>
+  <iframe id="slides" src="${escapeHtml(url)}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+  <div class="nav-bar">
+    <button class="home-btn" id="homeBtn" title="Course Navigator">&#8962;</button>
+    <div class="nav-center">
+      <button id="prevBtn" title="Previous slide" disabled>&#8592; Prev</button>
+      <span id="counter">1 / ?</span>
+      <button id="nextBtn" title="Next slide">Next &#8594;</button>
+    </div>
+    <span></span>
+  </div>
+  <script nonce="${nonce}">
+    (function() {
+      var vscode = acquireVsCodeApi();
+      var iframe = document.getElementById('slides');
+      var prevBtn = document.getElementById('prevBtn');
+      var nextBtn = document.getElementById('nextBtn');
+      var homeBtn = document.getElementById('homeBtn');
+      var counterEl = document.getElementById('counter');
+      var currentSlide = 1;
+      var totalSlides = 0;
+
+      function updateUI() {
+        prevBtn.disabled = currentSlide <= 1;
+        nextBtn.disabled = totalSlides > 0 && currentSlide >= totalSlides;
+        counterEl.textContent = currentSlide + ' / ' + (totalSlides || '?');
+      }
+
+      // Listen for init message from slides.js (total count)
+      window.addEventListener('message', function(e) {
+        if (!e.data || !e.data.type) return;
+        if (e.data.type === 'init' && typeof e.data.total === 'number') {
+          totalSlides = e.data.total;
+          updateUI();
+        } else if (e.data.type === 'goHome') {
+          vscode.postMessage({ type: 'iframeNavigated' });
         }
-        this.log.info(`[BrowserPanel] Slides HTML fetched (${html.length} bytes), injecting handler`);
-        this.panel.webview.html = await this.injectSlidesHandler(html, url);
+      });
+
+      prevBtn.addEventListener('click', function() {
+        if (currentSlide > 1) {
+          currentSlide--;
+          iframe.contentWindow.postMessage({ type: 'navigate', direction: 'prev' }, '*');
+          updateUI();
+          vscode.postMessage({ type: 'slideChanged', slide: currentSlide });
+        }
+      });
+
+      nextBtn.addEventListener('click', function() {
+        if (totalSlides === 0 || currentSlide < totalSlides) {
+          currentSlide++;
+          iframe.contentWindow.postMessage({ type: 'navigate', direction: 'next' }, '*');
+          updateUI();
+          vscode.postMessage({ type: 'slideChanged', slide: currentSlide });
+        }
+      });
+
+      homeBtn.addEventListener('click', function() {
+        vscode.postMessage({ type: 'iframeNavigated' });
+      });
+
+      // Keyboard nav in the parent webview
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === ' ') {
+          e.preventDefault();
+          nextBtn.click();
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          prevBtn.click();
+        }
+      });
+
+      // Initial state
+      vscode.postMessage({ type: 'slideChanged', slide: 1 });
+      updateUI();
+    })();
+  </script>
+</body>
+</html>`;
     }
     /** Reload the current content. */
     async refresh() {
@@ -92,12 +188,11 @@ class BrowserPanel {
             return;
         }
         this.log.info(`[BrowserPanel] Refreshing: ${this.currentUrl}`);
-        // Determine mode from panel title
         if (this.panel?.title === 'Course Catalog') {
             await this.showCatalog(this.currentUrl);
         }
         else {
-            await this.showSlides(this.currentUrl);
+            this.showSlides(this.currentUrl);
         }
     }
     dispose() {
@@ -126,108 +221,6 @@ class BrowserPanel {
             }
         }, undefined, this.context.subscriptions);
         this.panel.onDidDispose(() => { this.panel = undefined; });
-    }
-    /** Inject <base> tag, inline external scripts, and slide-change detection into fetched slides HTML. */
-    async injectSlidesHandler(html, slidesUrl) {
-        const base = slidesUrl.replace(/\/?$/, '/');
-        const nonce = getNonce();
-        let modified = html;
-        // Inject <base> after <head> so relative URLs (CSS, images) resolve to the remote server
-        modified = modified.replace(/<head([^>]*)>/i, `<head$1>\n<base href="${escapeHtml(base)}">`);
-        // Remove any existing CSP meta tags
-        modified = modified.replace(/<meta[^>]*Content-Security-Policy[^>]*>/gi, '');
-        // Webview-compatible CSP: nonce-only for scripts, remote origin for styles/images
-        let origin;
-        try {
-            origin = new URL(base).origin;
-        }
-        catch {
-            origin = 'https://ekuris-repos.github.io';
-        }
-        const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; `
-            + `script-src 'nonce-${nonce}'; `
-            + `style-src 'unsafe-inline' ${origin}; `
-            + `img-src https: data:; `
-            + `font-src https: data:;">`;
-        modified = modified.replace(/<base[^>]*>/, match => match + '\n' + csp);
-        // Fetch and inline all external <script> tags so they run under the nonce
-        const scriptTagRe = /<script[^>]*\bsrc=["']([^"']+)["'][^>]*><\/script>/gi;
-        let match;
-        const replacements = [];
-        while ((match = scriptTagRe.exec(modified)) !== null) {
-            replacements.push({ original: match[0], src: match[1] });
-        }
-        for (const rep of replacements) {
-            // Resolve relative src against the base URL
-            let scriptUrl;
-            try {
-                scriptUrl = new URL(rep.src, base).href;
-            }
-            catch {
-                continue;
-            }
-            this.log.info(`[BrowserPanel] Fetching script: ${scriptUrl}`);
-            const scriptContent = await this.fetchText(scriptUrl);
-            if (scriptContent) {
-                modified = modified.replace(rep.original, `<script nonce="${nonce}">\n${scriptContent}\n</script>`);
-                this.log.info(`[BrowserPanel] Inlined script: ${scriptUrl} (${scriptContent.length} bytes)`);
-            }
-            else {
-                this.log.warn(`[BrowserPanel] Failed to fetch script: ${scriptUrl}`);
-            }
-        }
-        // Our slide detection handler — intercepts replaceState, home button, and extension banner
-        const handler = /*html*/ `
-<script nonce="${nonce}">
-(function() {
-  var vscode = acquireVsCodeApi();
-
-  // Intercept history.replaceState to detect slide changes
-  var origReplace = history.replaceState.bind(history);
-  history.replaceState = function(state, title, url) {
-    origReplace(state, title, url);
-    var m = String(url || '').match(/#slide-(\\d+)/);
-    if (m) {
-      var slide = parseInt(m[1], 10);
-      vscode.postMessage({ type: 'slideChanged', slide: slide });
-    }
-  };
-
-  // Intercept home button click and keyboard 'h'/'H'
-  document.addEventListener('click', function(e) {
-    var btn = e.target.closest && e.target.closest('.slide-nav button:first-child');
-    if (btn) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      vscode.postMessage({ type: 'iframeNavigated' });
-    }
-  }, true);
-
-  document.addEventListener('keydown', function(e) {
-    if ((e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      vscode.postMessage({ type: 'iframeNavigated' });
-    }
-  }, true);
-
-  // Remove extension banner if slides.js injects one
-  var observer = new MutationObserver(function() {
-    var banner = document.querySelector('.extension-banner');
-    if (banner) { banner.remove(); observer.disconnect(); }
-  });
-  document.addEventListener('DOMContentLoaded', function() {
-    observer.observe(document.body, { childList: true });
-    // Send initial slide
-    var m = location.hash.match(/#slide-(\\d+)/);
-    var slide = m ? parseInt(m[1], 10) : 1;
-    vscode.postMessage({ type: 'slideChanged', slide: slide });
-  });
-})();
-</script>`;
-        // Inject our detection handler into <head> — BEFORE slides.js so replaceState is patched first
-        modified = modified.replace(/<\/head>/i, handler + '\n</head>');
-        return modified;
     }
     /** Inject <base> tag and click handler into fetched catalog HTML. */
     injectCatalogHandler(html, catalogUrl) {

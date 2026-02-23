@@ -75,7 +75,7 @@ export class LabController {
         // Navigate the browser panel to the course slides (left column)
         const courseUrl = `${server}/${coursePath}/`;
         this.log.info(`[startLabFromUri] Navigating browser panel → ${courseUrl}`);
-        await this.browserPanel.showSlides(courseUrl);
+        this.browserPanel.showSlides(courseUrl);
 
         // Open guide panel in column 2 (center)
         this.log.info('[startLabFromUri] Creating/revealing guide panel in Column 2');
