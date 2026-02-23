@@ -145,6 +145,8 @@ async function activate(context) {
             await vscode.commands.executeCommand('workbench.action.closeSidebar');
             // Close panel area (Terminal, Output, Problems, etc.)
             await vscode.commands.executeCommand('workbench.action.closePanel');
+            // Close auxiliary bar (Copilot Chat secondary sidebar)
+            await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
             log.info(`Opening catalog → ${catalogUrl}`);
             controller.openCatalog(catalogUrl);
         });

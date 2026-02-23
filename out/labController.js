@@ -173,6 +173,7 @@ class LabController {
         await vscode.commands.executeCommand('workbench.action.closeAllEditors');
         await vscode.commands.executeCommand('workbench.action.closeSidebar');
         await vscode.commands.executeCommand('workbench.action.closePanel');
+        await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
         this.log.info('[init] Workspace cleaned ✓');
     }
     /** Clone a git repo into a temp directory and open it as the workspace folder. */
