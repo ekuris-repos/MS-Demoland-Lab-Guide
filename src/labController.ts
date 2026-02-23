@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import * as http from 'http';
 import * as https from 'https';
+import * as cp from 'child_process';
+import * as os from 'os';
+import * as path from 'path';
 import { GuidePanel } from './guidePanel';
 import { BrowserPanel } from './browserPanel';
 
@@ -22,6 +25,8 @@ export interface SlideEntry {
 /** New lab.json format: keyed by slide number. */
 export interface Lab {
   title: string;
+  /** Optional repo URL to clone as the lab workspace. */
+  repo?: string;
   slides: Record<string, SlideEntry>;
 }
 
@@ -73,6 +78,14 @@ export class LabController {
         this.currentSlide = 1;
         this.currentSubStep = 0;
         this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
+
+        // Clean slate: close all workspace folders so the learner starts fresh
+        await this.closeAllWorkspaceFolders();
+
+        // Clone the lab repo if one is specified
+        if (this.lab.repo) {
+          await this.cloneLabRepo(this.lab.repo);
+        }
 
         // Navigate the browser panel to the course slides (left column)
         const courseUrl = `${server}/${coursePath}/`;
@@ -151,6 +164,61 @@ export class LabController {
     this.guidePanel?.dispose();
     this.browserPanel.dispose();
     this.statusBarItem.dispose();
+  }
+
+  // ── Workspace folder management ───────────────────────────────
+
+  /** Remove all workspace folders so the learner starts with a clean slate. */
+  private async closeAllWorkspaceFolders() {
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders && folders.length > 0) {
+      this.log.info(`[init] Closing ${folders.length} workspace folder(s)`);
+      vscode.workspace.updateWorkspaceFolders(0, folders.length);
+    }
+    // Also close all editor tabs, sidebar, and panel
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.commands.executeCommand('workbench.action.closeSidebar');
+    await vscode.commands.executeCommand('workbench.action.closePanel');
+    this.log.info('[init] Workspace cleaned ✓');
+  }
+
+  /** Clone a git repo into a temp directory and open it as the workspace folder. */
+  private async cloneLabRepo(repoUrl: string): Promise<void> {
+    // Derive a folder name from the repo URL
+    const repoName = repoUrl.replace(/\.git$/, '').split('/').pop() || 'lab-repo';
+    const targetDir = path.join(os.tmpdir(), 'lab-guide', repoName);
+    const targetUri = vscode.Uri.file(targetDir);
+
+    // Check if already cloned from a previous run
+    try {
+      await vscode.workspace.fs.stat(vscode.Uri.file(path.join(targetDir, '.git')));
+      this.log.info(`[cloneRepo] Already cloned at ${targetDir} — reusing`);
+      vscode.workspace.updateWorkspaceFolders(0, 0, { uri: targetUri, name: repoName });
+      return;
+    } catch {
+      // Not cloned yet — continue
+    }
+
+    this.log.info(`[cloneRepo] Cloning ${repoUrl} → ${targetDir}`);
+
+    return new Promise<void>((resolve) => {
+      cp.exec(
+        `git clone --depth 1 "${repoUrl}" "${targetDir}"`,
+        { timeout: 60_000 },
+        (err, _stdout, stderr) => {
+          if (err) {
+            this.log.error(`[cloneRepo] ✗ ${err.message}`);
+            this.log.error(`[cloneRepo] stderr: ${stderr}`);
+            vscode.window.showErrorMessage(`Failed to clone lab repo: ${err.message}`);
+            resolve();
+            return;
+          }
+          this.log.info(`[cloneRepo] ✓ Cloned successfully`);
+          vscode.workspace.updateWorkspaceFolders(0, 0, { uri: targetUri, name: repoName });
+          resolve();
+        }
+      );
+    });
   }
 
   /** Clean up all lab state and panels when returning to the catalog. */

@@ -102,6 +102,9 @@ class BrowserPanel {
     .nav-bar .home-btn { font-size: 16px; padding: 4px 8px; }
     .nav-bar .notes-btn { padding: 4px 8px; }
     .nav-bar .notes-btn.active { background: #388bfd; border-color: #388bfd; color: #fff; }
+    .skip-steps { display: flex; align-items: center; gap: 4px; margin-left: 4px; }
+    .skip-steps input { accent-color: #388bfd; cursor: pointer; }
+    .skip-steps label { font-size: 11px; color: #8b949e; cursor: pointer; white-space: nowrap; }
     .float-hint {
       position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%);
       background: #388bfd; color: #fff; font-size: 12px; font-weight: 600;
@@ -123,6 +126,7 @@ class BrowserPanel {
       <button id="prevBtn" title="Previous slide" disabled>&#8592; Prev</button>
       <span id="counter">1 / ?</span>
       <button id="nextBtn" title="Next slide">Next &#8594;</button>
+      <span class="skip-steps"><input type="checkbox" id="skipSteps"><label for="skipSteps">Skip Steps</label></span>
     </div>
     <button class="notes-btn" id="notesBtn" title="Toggle speaker notes (N)">&#9998; Notes</button>
   </div>
@@ -139,6 +143,7 @@ class BrowserPanel {
       var totalSlides = 0;
       var notesOn = false;
       var hasExtraSteps = false;
+      var skipSteps = document.getElementById('skipSteps');
 
       function updateUI() {
         prevBtn.disabled = currentSlide <= 1;
@@ -177,7 +182,7 @@ class BrowserPanel {
       });
 
       nextBtn.addEventListener('click', function() {
-        if (hasExtraSteps) {
+        if (hasExtraSteps && !skipSteps.checked) {
           showFloatHint();
           vscode.postMessage({ type: 'extraStepsBlocked' });
           return;
