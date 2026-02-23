@@ -61,6 +61,7 @@
   /* ---- Extension → Webview messages ---- */
   window.addEventListener('message', function (event) {
     var msg = event.data;
+    console.log('[guide.js] Message received:', msg.type, msg.step ? ('focus=' + JSON.stringify(msg.step.focus)) : '');
     if (msg.type === 'setState') {
       renderStep(msg.step);
     }
@@ -110,8 +111,11 @@
 
   /* ---- Apply focus zone: edge glow + arrows ---- */
   function applyFocus(zone) {
+    console.log('[guide.js] applyFocus called with:', JSON.stringify(zone), 'type:', typeof zone, 'isArray:', Array.isArray(zone));
+
     // Support multiple zones (string or array)
     var zones = Array.isArray(zone) ? zone : [zone];
+    console.log('[guide.js] zones resolved to:', JSON.stringify(zones));
 
     // Set data attribute to first zone for CSS colour variable
     document.body.setAttribute('data-focus', zones[0]);
@@ -128,6 +132,7 @@
     });
 
     // Arrows
+    console.log('[guide.js] allArrows:', JSON.stringify(allArrows), 'allEdges:', JSON.stringify(allEdges), 'allLabels:', JSON.stringify(allLabels));
     toggleActive(arrowLeft,  allArrows.indexOf('left') !== -1);
     toggleActive(arrowRight, allArrows.indexOf('right') !== -1);
     toggleActive(arrowUp,    allArrows.indexOf('up') !== -1);

@@ -47,6 +47,7 @@ class GuidePanel {
         }
         this.panel = vscode.window.createWebviewPanel('labGuide.guide', 'Lab Guide', { viewColumn: vscode.ViewColumn.Two, preserveFocus: false }, {
             enableScripts: true,
+            retainContextWhenHidden: true,
             localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
         });
         const iconUri = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'copilot-icon.svg');

@@ -20,6 +20,7 @@ export class GuidePanel {
       { viewColumn: vscode.ViewColumn.Two, preserveFocus: false },
       {
         enableScripts: true,
+        retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
       }
     );
