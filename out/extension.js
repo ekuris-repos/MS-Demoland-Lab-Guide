@@ -42,10 +42,9 @@ let controller;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
 /** Prompt the user to import the Lab Guide profile. */
 function promptProfileImport() {
-    const importUri = vscode.Uri.parse(`${vscode.env.uriScheme}://app/import-profile?url=${encodeURIComponent(PROFILE_URL)}`);
     vscode.window.showInformationMessage('Lab Guide requires its own VS Code profile to keep your settings safe. Import the Lab Guide profile to get started.', 'Import Profile').then(choice => {
         if (choice === 'Import Profile') {
-            vscode.env.openExternal(importUri);
+            vscode.commands.executeCommand('workbench.profiles.actions.importProfile', vscode.Uri.parse(PROFILE_URL));
         }
     });
 }
