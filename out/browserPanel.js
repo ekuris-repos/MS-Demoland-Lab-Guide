@@ -100,6 +100,8 @@ class BrowserPanel {
     .nav-bar button:disabled { opacity: 0.4; cursor: default; }
     .nav-bar .nav-center { display: flex; align-items: center; gap: 8px; }
     .nav-bar .home-btn { font-size: 16px; padding: 4px 8px; }
+    .nav-bar .notes-btn { padding: 4px 8px; }
+    .nav-bar .notes-btn.active { background: #388bfd; border-color: #388bfd; color: #fff; }
   </style>
 </head>
 <body>
@@ -111,7 +113,7 @@ class BrowserPanel {
       <span id="counter">1 / ?</span>
       <button id="nextBtn" title="Next slide">Next &#8594;</button>
     </div>
-    <span></span>
+    <button class="notes-btn" id="notesBtn" title="Toggle speaker notes (N)">&#9998; Notes</button>
   </div>
   <script nonce="${nonce}">
     (function() {
@@ -120,9 +122,11 @@ class BrowserPanel {
       var prevBtn = document.getElementById('prevBtn');
       var nextBtn = document.getElementById('nextBtn');
       var homeBtn = document.getElementById('homeBtn');
+      var notesBtn = document.getElementById('notesBtn');
       var counterEl = document.getElementById('counter');
       var currentSlide = 1;
       var totalSlides = 0;
+      var notesOn = false;
 
       function updateUI() {
         prevBtn.disabled = currentSlide <= 1;
@@ -163,6 +167,12 @@ class BrowserPanel {
         vscode.postMessage({ type: 'iframeNavigated' });
       });
 
+      notesBtn.addEventListener('click', function() {
+        notesOn = !notesOn;
+        notesBtn.classList.toggle('active', notesOn);
+        iframe.contentWindow.postMessage({ type: 'toggleNotes' }, '*');
+      });
+
       // Keyboard nav in the parent webview
       document.addEventListener('keydown', function(e) {
         if (e.key === 'ArrowRight' || e.key === ' ') {
@@ -171,6 +181,8 @@ class BrowserPanel {
         } else if (e.key === 'ArrowLeft') {
           e.preventDefault();
           prevBtn.click();
+        } else if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) {
+          notesBtn.click();
         }
       });
 
