@@ -228,24 +228,32 @@ body {
 .arrow-left .arrow-label {
   position: absolute;
   left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
   margin-left: 4px;
 }
 
 .arrow-right .arrow-label {
   position: absolute;
   right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
   margin-right: 4px;
 }
 
 .arrow-up .arrow-label {
   position: absolute;
   top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
   margin-top: 2px;
 }
 
 .arrow-down .arrow-label {
   position: absolute;
   bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
   margin-bottom: 2px;
 }
 
