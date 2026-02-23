@@ -284,10 +284,10 @@ export class LabController {
   }
 
   /** Run a VS Code command only if its target isn't already visible. */
-  private async executeAction(cmd: string, force = false) {
+  private async executeAction(cmd: string) {
     const tabs = vscode.window.tabGroups.all.flatMap(g => g.tabs);
 
-    // Guard: skip if the target is already open (unless forced)
+    // Guard: skip if the target is already open
     switch (cmd) {
       case 'workbench.action.chat.open': {
         const hasChat = tabs.some(t =>
@@ -301,12 +301,20 @@ export class LabController {
         break;
       }
       case 'workbench.action.files.newUntitledFile': {
-        if (!force) {
-          const hasUntitled = tabs.some(t => t.label.startsWith('Untitled'));
-          if (hasUntitled) {
-            this.log.info(`[action] Skipped (untitled file exists): ${cmd}`);
-            return;
+        const untitledTab = tabs.find(t => t.label.startsWith('Untitled'));
+        if (untitledTab) {
+          // Focus the existing untitled file instead of creating another
+          this.log.info(`[action] Focusing existing untitled file`);
+          const input = untitledTab.input;
+          if (input && typeof (input as { uri?: unknown }).uri !== 'undefined') {
+            const uri = (input as { uri: vscode.Uri }).uri;
+            const doc = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(doc, {
+              viewColumn: vscode.ViewColumn.Two,
+              preserveFocus: true
+            });
           }
+          return;
         }
         // Open as a background tab in the guide column (Column 2)
         this.log.info(`[action] Opening untitled file in Column 2 (background)`);
@@ -372,7 +380,7 @@ export class LabController {
     if (!step?.action) { return; }
     const actions = Array.isArray(step.action) ? step.action : [step.action];
     for (const cmd of actions) {
-      await this.executeAction(cmd, true);
+      await this.executeAction(cmd);
     }
     setTimeout(() => this.guidePanel?.reveal(), 300);
   }
