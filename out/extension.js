@@ -40,10 +40,10 @@ const labController_1 = require("./labController");
 const PROFILE_URL = 'https://ekuris-repos.github.io/MS-Demoland/lab-guide.code-profile';
 let controller;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
-/** Prompt the user to import the Lab Guide profile. */
+/** Prompt the user to switch to the Lab Guide profile. */
 function promptProfileImport() {
-    vscode.window.showInformationMessage('Lab Guide requires its own VS Code profile to keep your settings safe. Import the Lab Guide profile to get started.', 'Import Profile').then(choice => {
-        if (choice === 'Import Profile') {
+    vscode.window.showInformationMessage('Lab Guide requires its own VS Code profile to keep your settings safe. Import the Lab Guide profile to get started.', 'Switch Profile').then(choice => {
+        if (choice === 'Switch Profile') {
             vscode.commands.executeCommand('workbench.profiles.actions.importProfile', vscode.Uri.parse(PROFILE_URL));
         }
     });

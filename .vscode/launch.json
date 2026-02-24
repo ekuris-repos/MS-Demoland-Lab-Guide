@@ -5,12 +5,12 @@
       "name": "Run Lab Guide Extension",
       "type": "extensionHost",
       "request": "launch",
+      "runtimeExecutable": "${execPath}",
       "args": [
-        "--profile=Lab Guide",
-        "--extensionDevelopmentPath=${workspaceFolder:MS-Demoland-Lab-Guide}",
-        "${workspaceFolder:MS Demoland}/MS Demoland GHCP Training.code-workspace"
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--profile-temp"
       ],
-      "outFiles": ["${workspaceFolder:MS-Demoland-Lab-Guide}/out/**/*.js"]
+      "outFiles": ["${workspaceFolder}/out/**/*.js"]
     }
   ]
 }
