@@ -1,24 +1,18 @@
 import * as vscode from 'vscode';
 import { LabController } from './labController';
 
-const PROFILE_URL = 'https://ekuris-repos.github.io/MS-Demoland/lab-guide.code-profile';
+const PROFILE_URL = 'https://ekuris-repos.github.io/MS-Demoland/lab-guide-profile.json';
 
 let controller: LabController | undefined;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
 
-/** Prompt the user to switch to the Lab Guide profile. */
-function promptProfileImport() {
-  vscode.window.showInformationMessage(
-    'Lab Guide requires its own VS Code profile to keep your settings safe. Import the Lab Guide profile to get started.',
-    'Switch Profile'
-  ).then(choice => {
-    if (choice === 'Switch Profile') {
-      vscode.commands.executeCommand(
-        'workbench.profiles.actions.importProfile',
-        vscode.Uri.parse(PROFILE_URL)
-      );
-    }
-  });
+/** Trigger the OS-level profile import URI. */
+function setupAndSwitchProfile() {
+  const importUri = vscode.Uri.parse(
+    `${vscode.env.uriScheme}://profile/import?url=${encodeURIComponent(PROFILE_URL)}`
+  );
+  log.info(`Opening profile import URI: ${importUri.toString()}`);
+  vscode.env.openExternal(importUri);
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -32,17 +26,24 @@ export async function activate(context: vscode.ExtensionContext) {
   if (!profileActive) {
     log.info('labGuide.profileActive is false — not in Lab Guide profile');
 
-    // Register a minimal URI handler so vscode:// links still prompt for import
+    // Register a minimal URI handler so vscode:// links still trigger setup
     context.subscriptions.push(
       vscode.window.registerUriHandler({
         handleUri(_uri: vscode.Uri) {
-          log.info('URI received outside Lab Guide profile — prompting profile import');
-          promptProfileImport();
+          log.info('URI received outside Lab Guide profile — running setup');
+          setupAndSwitchProfile();
         }
       })
     );
 
-    promptProfileImport();
+    vscode.window.showInformationMessage(
+      'Lab Guide requires its own VS Code profile to keep your settings safe. Import the Lab Guide profile to get started.',
+      'Get Profile'
+    ).then(choice => {
+      if (choice === 'Get Profile') {
+        setupAndSwitchProfile();
+      }
+    });
     return;
   }
   log.info('Running inside Lab Guide profile ✓');
