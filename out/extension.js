@@ -36,37 +36,61 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
+const child_process_1 = require("child_process");
 const labController_1 = require("./labController");
-const PROFILE_URL = 'https://ekuris-repos.github.io/MS-Demoland/lab-guide-profile.json';
+const PROFILE_NAME = 'Lab Guide';
+const EXTENSION_ID = 'ms-demoland.lab-guide';
 let controller;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
-/** Trigger the OS-level profile import URI. */
-function setupAndSwitchProfile() {
-    const importUri = vscode.Uri.parse(`${vscode.env.uriScheme}://profile/import?url=${encodeURIComponent(PROFILE_URL)}`);
-    log.info(`Opening profile import URI: ${importUri.toString()}`);
-    vscode.env.openExternal(importUri);
+/** Open a new window under the Lab Guide profile, installing the extension into it. */
+function createProfileAndOpen() {
+    const cliPath = vscode.env.appHost === 'desktop'
+        ? process.execPath // the Electron binary
+        : undefined;
+    if (!cliPath) {
+        return;
+    }
+    const args = [
+        '--profile', PROFILE_NAME,
+        '--install-extension', EXTENSION_ID
+    ];
+    log.info(`Launching: ${cliPath} ${args.join(' ')}`);
+    (0, child_process_1.execFile)(cliPath, args, (err) => {
+        if (err) {
+            log.error(`Profile creation failed: ${err.message}`);
+        }
+    });
 }
 async function activate(context) {
     log.info('Lab Guide extension activating…');
     context.subscriptions.push(log);
     // ── Profile gate ──────────────────────────────────────────────
-    const profileActive = vscode.workspace.getConfiguration('labGuide')
-        .get('profileActive', false);
+    const config = vscode.workspace.getConfiguration('labGuide');
+    let profileActive = config.get('profileActive', false);
     if (!profileActive) {
-        log.info('labGuide.profileActive is false — not in Lab Guide profile');
-        // Register a minimal URI handler so vscode:// links still trigger setup
-        context.subscriptions.push(vscode.window.registerUriHandler({
-            handleUri(_uri) {
-                log.info('URI received outside Lab Guide profile — running setup');
-                setupAndSwitchProfile();
-            }
-        }));
-        vscode.window.showInformationMessage('Lab Guide requires its own VS Code profile to keep your settings safe. Import the Lab Guide profile to get started.', 'Get Profile').then(choice => {
-            if (choice === 'Get Profile') {
-                setupAndSwitchProfile();
-            }
-        });
-        return;
+        // First activation in a fresh profile? Auto-enable and continue.
+        const firstRun = !context.globalState.get('prompted');
+        if (firstRun) {
+            await context.globalState.update('prompted', true);
+        }
+        // If this is NOT the first run (user already dismissed), they're in the
+        // wrong profile — show the toast.  If it IS the first run AND the
+        // extension was installed via --install-extension into a named profile,
+        // auto-enable so the profile is ready to go.
+        if (firstRun) {
+            log.info('First activation — auto-enabling profileActive');
+            await config.update('profileActive', true, vscode.ConfigurationTarget.Global);
+            profileActive = true;
+        }
+        else {
+            log.info('labGuide.profileActive is false — not in Lab Guide profile');
+            vscode.window.showInformationMessage('Lab Guide requires its own VS Code profile to keep your settings safe.', 'Get Profile').then(choice => {
+                if (choice === 'Get Profile') {
+                    createProfileAndOpen();
+                }
+            });
+            return;
+        }
     }
     log.info('Running inside Lab Guide profile ✓');
     controller = new labController_1.LabController(context, log);
