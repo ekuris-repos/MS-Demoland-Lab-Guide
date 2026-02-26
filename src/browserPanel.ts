@@ -348,11 +348,13 @@ export class BrowserPanel {
       const req = client.get(url, { timeout: 10000 }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           this.log.info(`[BrowserPanel] Following redirect → ${res.headers.location}`);
+          res.resume();
           this.fetchText(res.headers.location).then(resolve);
           return;
         }
         if (res.statusCode !== 200) {
           this.log.error(`[BrowserPanel] fetchText ${url} → HTTP ${res.statusCode}`);
+          res.resume();
           resolve(null);
           return;
         }

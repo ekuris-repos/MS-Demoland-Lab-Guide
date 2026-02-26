@@ -234,7 +234,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       log.info(`Opening catalog → ${catalogUrl}`);
       controller!.openCatalog(catalogUrl);
-    });
+    }, (err: unknown) => log.error(`Workspace cleanup failed: ${err}`));
   } else {
     log.warn('No catalogUrl configured — skipping auto-open');
   }

@@ -227,7 +227,7 @@ async function activate(context) {
             await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
             log.info(`Opening catalog → ${catalogUrl}`);
             controller.openCatalog(catalogUrl);
-        });
+        }, (err) => log.error(`Workspace cleanup failed: ${err}`));
     }
     else {
         log.warn('No catalogUrl configured — skipping auto-open');

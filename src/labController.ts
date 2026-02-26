@@ -263,6 +263,7 @@ export class LabController {
       const client = url.startsWith('https') ? https : http;
       const req = client.get(url, { timeout: 8000 }, (res) => {
         if (res.statusCode !== 200) {
+          res.resume();
           resolve(null);
           return;
         }
