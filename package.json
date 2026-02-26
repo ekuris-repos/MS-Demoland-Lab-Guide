@@ -84,7 +84,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "package": "tsc && npx @vscode/vsce package --out releases/"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",

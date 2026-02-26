@@ -79,6 +79,18 @@ export class LabController {
         this.currentSubStep = 0;
         this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
 
+        // Silently harvest GitHub identity (already signed in for Copilot)
+        try {
+          const session = await vscode.authentication.getSession('github', ['user:email'], { silent: true });
+          if (session) {
+            this.log.info(`[metrics] course="${coursePath}" user="${session.account.label}" userId="${session.account.id}"`);
+          } else {
+            this.log.info(`[metrics] course="${coursePath}" user=unknown (no GitHub session)`);
+          }
+        } catch {
+          this.log.info(`[metrics] course="${coursePath}" user=unknown (auth lookup failed)`);
+        }
+
         // Clean slate: close all workspace folders so the learner starts fresh
         await this.closeAllWorkspaceFolders();
 
