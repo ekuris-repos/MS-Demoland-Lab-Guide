@@ -1,66 +1,207 @@
 import * as vscode from 'vscode';
-import { execFile } from 'child_process';
+import { spawn } from 'child_process';
+import { get as httpsGet } from 'https';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { join } from 'path';
 import { LabController } from './labController';
 
 const PROFILE_NAME = 'Lab Guide';
 const EXTENSION_ID = 'ms-demoland.lab-guide';
+const PROFILE_URL = 'https://ekuris-repos.github.io/MS-Demoland/lab-guide-profile.json';
 
 let controller: LabController | undefined;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
 
-/** Open a new window under the Lab Guide profile, installing the extension into it. */
-function createProfileAndOpen() {
-  const cliPath = vscode.env.appHost === 'desktop'
-    ? process.execPath          // the Electron binary
-    : undefined;
-  if (!cliPath) { return; }
+// ── Profile provisioning helpers ────────────────────────────────
 
-  const args = [
-    '--profile', PROFILE_NAME,
-    '--install-extension', EXTENSION_ID
-  ];
-  log.info(`Launching: ${cliPath} ${args.join(' ')}`);
-  execFile(cliPath, args, (err) => {
-    if (err) { log.error(`Profile creation failed: ${err.message}`); }
+/** Generate an 8-char hex hash (same style VS Code uses for profile dirs). */
+function profileHash(name: string): string {
+  let h = 0;
+  for (const ch of name) { h = ((h << 5) - h + ch.charCodeAt(0)) | 0; }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/** Resolve the VS Code user-data root (handles Code vs Code - Insiders). */
+function userDataRoot(): string {
+  const appData = process.env.APPDATA!;
+  const appName = vscode.env.appName.includes('Insiders')
+    ? 'Code - Insiders' : 'Code';
+  return join(appData, appName, 'User');
+}
+
+interface ProfileTemplate {
+  name: string;
+  settings?: string;   // stringified JSON
+  extensions?: string; // stringified JSON
+}
+
+/** Download the hosted profile JSON. */
+function fetchProfile(url: string): Promise<ProfileTemplate> {
+  return new Promise((resolve, reject) => {
+    httpsGet(url, res => {
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode}`));
+        res.resume();
+        return;
+      }
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
+}
+
+/**
+ * Provision the Lab Guide profile on disk and register it in storage.json.
+ * Returns true if the profile now exists.
+ */
+async function provisionProfile(): Promise<boolean> {
+  const root = userDataRoot();
+  const storageFile = join(root, 'globalStorage', 'storage.json');
+
+  if (!existsSync(storageFile)) {
+    log.error(`storage.json not found at ${storageFile}`);
+    return false;
+  }
+
+  // Check if profile already registered
+  const storage = JSON.parse(readFileSync(storageFile, 'utf-8'));
+  const profiles: Array<{ name: string; location: string }> =
+    storage.userDataProfiles ?? [];
+  if (profiles.some(p => p.name === PROFILE_NAME)) {
+    log.info('Lab Guide profile already registered');
+    return true;
+  }
+
+  // Download the hosted profile template
+  log.info(`Downloading profile from ${PROFILE_URL}`);
+  let template: ProfileTemplate;
+  try {
+    template = await fetchProfile(PROFILE_URL);
+  } catch (e: any) {
+    log.error(`Failed to download profile: ${e.message}`);
+    return false;
+  }
+
+  // Create profile directory + settings
+  const hash = profileHash(PROFILE_NAME);
+  const profileDir = join(root, 'profiles', hash);
+  mkdirSync(profileDir, { recursive: true });
+
+  if (template.settings) {
+    const settings = JSON.parse(template.settings);
+    writeFileSync(
+      join(profileDir, 'settings.json'),
+      JSON.stringify(settings, null, 2),
+      'utf-8'
+    );
+    log.info(`Wrote settings.json → ${profileDir}`);
+  }
+
+  // Write extensions.json so VS Code knows which extensions the profile
+  // expects and can prompt the user to install them on first load.
+  if (template.extensions) {
+    const templateExts: Array<{ identifier: { id: string }; displayName?: string }> =
+      JSON.parse(template.extensions);
+    const diskExts = templateExts.map(ext => ({
+      identifier: ext.identifier,
+      metadata: { source: 'gallery' }
+    }));
+    writeFileSync(
+      join(profileDir, 'extensions.json'),
+      JSON.stringify(diskExts, null, 2),
+      'utf-8'
+    );
+    log.info(`Wrote extensions.json → ${profileDir}`);
+  }
+
+  // Register the profile in storage.json
+  profiles.push({ location: hash, name: PROFILE_NAME });
+  storage.userDataProfiles = profiles;
+  writeFileSync(storageFile, JSON.stringify(storage, null, '\t'), 'utf-8');
+  log.info('Registered profile in storage.json');
+
+  return true;
+}
+
+/** Resolve the VS Code CLI binary (bin/code or bin/code-insiders). */
+function vscodeCli(): string {
+  const exeDir = require('path').dirname(process.execPath);
+  const isInsiders = vscode.env.appName.includes('Insiders');
+  const cmd = isInsiders ? 'code-insiders' : 'code';
+  // Windows: bin/code-insiders.cmd, macOS/Linux: bin/code-insiders
+  const ext = process.platform === 'win32' ? '.cmd' : '';
+  return join(exeDir, 'bin', cmd + ext);
+}
+
+/** Open a new window under the Lab Guide profile and install the extension into it. */
+function openInProfile() {
+  const cli = vscodeCli();
+
+  // 1. Install the extension into the profile (runs headlessly).
+  const installCmd = `"${cli}" --profile "${PROFILE_NAME}" --install-extension ${EXTENSION_ID}`;
+  log.info(`Installing extension: ${installCmd}`);
+  const install = spawn(installCmd, { shell: true, stdio: 'ignore' });
+  install.on('close', code => {
+    if (code !== 0) {
+      log.warn(`Extension install exited with code ${code} (may not be published yet)`);
+    }
+    // 2. Open the window AFTER install finishes so the extension is ready.
+    const openCmd = `"${cli}" --profile "${PROFILE_NAME}"`;
+    log.info(`Launching: ${openCmd}`);
+    const child = spawn(openCmd, { shell: true, detached: true, stdio: 'ignore' });
+    child.unref();
+    child.on('error', err => {
+      log.warn(`Profile window launch note: ${err.message}`);
+    });
+  });
+  install.on('error', err => {
+    log.warn(`Extension install error: ${err.message}`);
   });
 }
 
 export async function activate(context: vscode.ExtensionContext) {
   log.info('Lab Guide extension activating…');
+  log.info(`Current profile: "${vscode.env.appName}" | globalStorageUri: ${context.globalStorageUri.fsPath}`);
+  log.info(`profileActive setting value: ${vscode.workspace.getConfiguration('labGuide').get('profileActive')}`);
   context.subscriptions.push(log);
 
   // ── Profile gate ──────────────────────────────────────────────
-  const config = vscode.workspace.getConfiguration('labGuide');
-  let profileActive = config.get<boolean>('profileActive', false);
+  const profileActive = vscode.workspace.getConfiguration('labGuide')
+    .get<boolean>('profileActive', false);
 
   if (!profileActive) {
-    // First activation in a fresh profile? Auto-enable and continue.
-    const firstRun = !context.globalState.get<boolean>('prompted');
-    if (firstRun) {
-      await context.globalState.update('prompted', true);
-    }
-    // If this is NOT the first run (user already dismissed), they're in the
-    // wrong profile — show the toast.  If it IS the first run AND the
-    // extension was installed via --install-extension into a named profile,
-    // auto-enable so the profile is ready to go.
-    if (firstRun) {
-      log.info('First activation — auto-enabling profileActive');
-      await config.update('profileActive', true, vscode.ConfigurationTarget.Global);
-      profileActive = true;
-    } else {
-      log.info('labGuide.profileActive is false — not in Lab Guide profile');
-      vscode.window.showInformationMessage(
-        'Lab Guide requires its own VS Code profile to keep your settings safe.',
-        'Get Profile'
-      ).then(choice => {
-        if (choice === 'Get Profile') {
-          createProfileAndOpen();
-        }
-      });
-      return;
-    }
+    log.info('labGuide.profileActive is false — not in Lab Guide profile');
+    vscode.window.showInformationMessage(
+      'Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.',
+      'Create Profile'
+    ).then(async choice => {
+      if (choice !== 'Create Profile') { return; }
+      const ok = await provisionProfile();
+      if (ok) {
+        openInProfile();
+      } else {
+        vscode.window.showErrorMessage(
+          'Failed to set up the Lab Guide profile. Check the Lab Guide output channel for details.'
+        );
+      }
+    });
+    return;
   }
   log.info('Running inside Lab Guide profile ✓');
+
+  // ── Welcome toast (first run in correct profile) ──────────────
+  const welcomed = context.globalState.get<boolean>('welcomed');
+  if (!welcomed) {
+    await context.globalState.update('welcomed', true);
+    vscode.window.showInformationMessage(
+      'Welcome to the GitHub Copilot Training Lab! Choose a course from the catalog to begin an interactive session.',
+      'Dismiss'
+    );
+  }
 
   controller = new LabController(context, log);
   log.info('LabController created');
