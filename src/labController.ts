@@ -25,8 +25,10 @@ export interface SlideEntry {
 /** New lab.json format: keyed by slide number. */
 export interface Lab {
   title: string;
-  /** Optional repo URL to clone as the lab workspace. */
+  /** Optional single repo URL to clone (backward compat). */
   repo?: string;
+  /** Optional array of repo URLs to clone as the lab workspace. */
+  repos?: string[];
   slides: Record<string, SlideEntry>;
 }
 
@@ -90,9 +92,18 @@ export class LabController {
         // Clean slate: close all workspace folders so the learner starts fresh
         await this.closeAllWorkspaceFolders();
 
-        // Clone the lab repo if one is specified
-        if (this.lab.repo) {
-          await this.cloneLabRepo(this.lab.repo);
+        // Collect all repos to clone (support both single and multi)
+        const repos: string[] = [];
+        if (this.lab.repos) {
+          repos.push(...this.lab.repos);
+        }
+        if (this.lab.repo && !repos.includes(this.lab.repo)) {
+          repos.push(this.lab.repo);
+        }
+
+        // Clone all repos
+        for (const repoUrl of repos) {
+          await this.cloneLabRepo(repoUrl);
         }
 
         // Navigate the browser panel to the course slides (left column)
