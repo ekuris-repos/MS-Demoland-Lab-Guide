@@ -80,23 +80,21 @@ export class LabController {
         this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
 
         // ── GitHub session gate (required for lab companion) ─────
-        let ghSession = await vscode.authentication.getSession('github', ['user:email'], { silent: true });
+        // Try silent with no scopes first — Copilot may have created a session
+        // with its own scopes, and requesting specific scopes won't match it.
+        let ghSession = await vscode.authentication.getSession('github', [], { silent: true });
+        this.log.info(`[startLabFromUri] github session (no scopes, silent): ${ghSession ? ghSession.account.label : 'none'}`);
         if (!ghSession) {
-          this.log.warn('[startLabFromUri] No GitHub session — prompting user');
-          const signIn = await vscode.window.showWarningMessage(
-            'The interactive lab companion requires a GitHub Copilot license. Please sign in to GitHub to continue.',
-            'Sign In'
+          // Try createIfNone — this will show the native GitHub sign-in flow
+          ghSession = await vscode.authentication.getSession('github', [], { createIfNone: true }) ?? null;
+          this.log.info(`[startLabFromUri] github session (no scopes, prompted): ${ghSession ? ghSession.account.label : 'none'}`);
+        }
+        if (!ghSession) {
+          this.log.info('[startLabFromUri] No GitHub session — lab companion blocked');
+          vscode.window.showErrorMessage(
+            'A GitHub account is required for course progress tracking. Please sign in to GitHub and try again.'
           );
-          if (signIn === 'Sign In') {
-            ghSession = await vscode.authentication.getSession('github', ['user:email'], { createIfNone: true }) ?? null;
-          }
-          if (!ghSession) {
-            this.log.info('[startLabFromUri] No GitHub session — lab companion blocked');
-            vscode.window.showErrorMessage(
-              'A GitHub Copilot license is required for the lab companion. You can still browse course slides from the catalog.'
-            );
-            return;
-          }
+          return;
         }
         this.log.info(`[metrics] course="${coursePath}" user="${ghSession.account.label}" userId="${ghSession.account.id}"`);
 

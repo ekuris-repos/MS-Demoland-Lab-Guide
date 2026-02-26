@@ -107,35 +107,49 @@ function vscodeCli(): string {
   return join(exeDir, 'bin', cmd + ext);
 }
 
-/** Open a new window under the Lab Guide profile and install the extension into it. */
-function openInProfile(template: ProfileTemplate) {
+/** Run a shell command and return the exit code as a promise. */
+function run(cmd: string): Promise<number> {
+  return new Promise(resolve => {
+    log.info(`Running: ${cmd}`);
+    const child = spawn(cmd, { shell: true, stdio: 'ignore' });
+    child.on('close', code => resolve(code ?? 1));
+    child.on('error', () => resolve(1));
+  });
+}
+
+/**
+ * 4-phase profile setup:
+ *   1. Create the blank profile
+ *   2. Install the extension into it
+ *   3. Write profile settings (profileActive, etc.)
+ *   4. Open a new window with the fully configured profile
+ */
+async function openInProfile(template: ProfileTemplate) {
   const cli = vscodeCli();
 
-  // 1. Install the extension into the profile (runs headlessly).
-  //    This also creates the profile if it doesn't exist.
-  const installCmd = `"${cli}" --profile "${PROFILE_NAME}" --install-extension ${EXTENSION_ID}`;
-  log.info(`Installing extension: ${installCmd}`);
-  const install = spawn(installCmd, { shell: true, stdio: 'ignore' });
-  install.on('close', code => {
-    if (code !== 0) {
-      log.warn(`Extension install exited with code ${code} (may not be published yet)`);
-    }
+  // Phase 1: Create the profile (headless — just ensures it exists in storage.json)
+  log.info('Phase 1: Creating profile…');
+  await run(`"${cli}" --profile "${PROFILE_NAME}" --list-extensions`);
 
-    // 2. Write settings.json AFTER install so the CLI doesn't overwrite it.
-    writeProfileSettings(template);
+  // Phase 2: Install the extension into the profile
+  log.info('Phase 2: Installing extension…');
+  const installCode = await run(
+    `"${cli}" --profile "${PROFILE_NAME}" --install-extension ${EXTENSION_ID}`
+  );
+  if (installCode !== 0) {
+    log.warn(`Extension install exited with code ${installCode} (may not be published yet)`);
+  }
 
-    // 3. Open the window with settings + extension in place.
-    const openCmd = `"${cli}" --profile "${PROFILE_NAME}"`;
-    log.info(`Launching: ${openCmd}`);
-    const child = spawn(openCmd, { shell: true, detached: true, stdio: 'ignore' });
-    child.unref();
-    child.on('error', err => {
-      log.warn(`Profile window launch note: ${err.message}`);
-    });
+  // Phase 3: Write settings.json so profileActive=true is picked up on launch
+  log.info('Phase 3: Writing profile settings…');
+  writeProfileSettings(template);
+
+  // Phase 4: Open the window
+  log.info('Phase 4: Opening profile window…');
+  const child = spawn(`"${cli}" --profile "${PROFILE_NAME}"`, {
+    shell: true, detached: true, stdio: 'ignore'
   });
-  install.on('error', err => {
-    log.warn(`Extension install error: ${err.message}`);
-  });
+  child.unref();
 }
 
 export async function activate(context: vscode.ExtensionContext) {
