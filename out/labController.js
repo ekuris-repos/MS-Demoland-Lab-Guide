@@ -77,22 +77,14 @@ class LabController {
             this.currentSlide = 1;
             this.currentSubStep = 0;
             this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
-            // ── GitHub session gate (required for lab companion) ─────
-            // Try silent with no scopes first — Copilot may have created a session
-            // with its own scopes, and requesting specific scopes won't match it.
-            let ghSession = await vscode.authentication.getSession('github', [], { silent: true });
-            this.log.info(`[startLabFromUri] github session (no scopes, silent): ${ghSession ? ghSession.account.label : 'none'}`);
-            if (!ghSession) {
-                // Try createIfNone — this will show the native GitHub sign-in flow
-                ghSession = await vscode.authentication.getSession('github', [], { createIfNone: true }) ?? null;
-                this.log.info(`[startLabFromUri] github session (no scopes, prompted): ${ghSession ? ghSession.account.label : 'none'}`);
+            // ── GitHub session (best-effort — slides load regardless) ─────
+            const ghSession = await vscode.authentication.getSession('github', [], { silent: true });
+            if (ghSession) {
+                this.log.info(`[metrics] course="${coursePath}" user="${ghSession.account.label}" userId="${ghSession.account.id}"`);
             }
-            if (!ghSession) {
-                this.log.info('[startLabFromUri] No GitHub session — lab companion blocked');
-                vscode.window.showErrorMessage('A GitHub account is required for course progress tracking. Please sign in to GitHub and try again.');
-                return;
+            else {
+                this.log.warn('[startLabFromUri] No GitHub session — course progress will not be tracked');
             }
-            this.log.info(`[metrics] course="${coursePath}" user="${ghSession.account.label}" userId="${ghSession.account.id}"`);
             // Clean slate: close all workspace folders so the learner starts fresh
             await this.closeAllWorkspaceFolders();
             // Clone the lab repo if one is specified
@@ -103,21 +95,27 @@ class LabController {
             const courseUrl = `${server}/${coursePath}/`;
             this.log.info(`[startLabFromUri] Navigating browser panel → ${courseUrl}`);
             this.browserPanel.showSlides(courseUrl);
-            // Open guide panel in column 2 (center)
-            this.log.info('[startLabFromUri] Creating/revealing guide panel in Column 2');
-            if (!this.guidePanel) {
-                this.log.info('[startLabFromUri] Creating new GuidePanel');
-                this.guidePanel = new guidePanel_1.GuidePanel(this.context, msg => this.onWebviewMessage(msg));
+            // Guide panel only loads when we have a tracked session so the
+            // extension can navigate slides and record progress.
+            if (ghSession) {
+                this.log.info('[startLabFromUri] Creating/revealing guide panel in Column 2');
+                if (!this.guidePanel) {
+                    this.log.info('[startLabFromUri] Creating new GuidePanel');
+                    this.guidePanel = new guidePanel_1.GuidePanel(this.context, msg => this.onWebviewMessage(msg));
+                }
+                else {
+                    this.log.info('[startLabFromUri] Reusing existing GuidePanel');
+                }
+                this.guidePanel.show();
+                this.log.info('[startLabFromUri] GuidePanel.show() called');
+                this.guidePanel.postMessage({ type: 'setTitle', title: this.lab.title });
+                this.log.info(`[startLabFromUri] Sent setTitle: "${this.lab.title}"`);
+                this.statusBarItem.show();
+                this.showCurrentStep();
             }
             else {
-                this.log.info('[startLabFromUri] Reusing existing GuidePanel');
+                this.log.info('[startLabFromUri] Skipping guide panel — no tracked session');
             }
-            this.guidePanel.show();
-            this.log.info('[startLabFromUri] GuidePanel.show() called');
-            this.guidePanel.postMessage({ type: 'setTitle', title: this.lab.title });
-            this.log.info(`[startLabFromUri] Sent setTitle: "${this.lab.title}"`);
-            this.statusBarItem.show();
-            this.showCurrentStep();
             this.log.info('[startLabFromUri] Lab fully initialized ✓');
         });
     }
