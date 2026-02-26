@@ -85,59 +85,40 @@ function fetchProfile(url) {
     });
 }
 /**
- * Provision the Lab Guide profile on disk and register it in storage.json.
- * Returns true if the profile now exists.
+ * Download the profile template. Provisioning happens in openInProfile()
+ * after the CLI install, so settings.json isn't overwritten.
  */
-async function provisionProfile() {
-    const root = userDataRoot();
-    const storageFile = (0, path_1.join)(root, 'globalStorage', 'storage.json');
-    if (!(0, fs_1.existsSync)(storageFile)) {
-        log.error(`storage.json not found at ${storageFile}`);
-        return false;
-    }
-    // Check if profile already registered
-    const storage = JSON.parse((0, fs_1.readFileSync)(storageFile, 'utf-8'));
-    const profiles = storage.userDataProfiles ?? [];
-    if (profiles.some(p => p.name === PROFILE_NAME)) {
-        log.info('Lab Guide profile already registered');
-        return true;
-    }
-    // Download the hosted profile template
+async function fetchProfileTemplate() {
     log.info(`Downloading profile from ${PROFILE_URL}`);
-    let template;
     try {
-        template = await fetchProfile(PROFILE_URL);
+        return await fetchProfile(PROFILE_URL);
     }
     catch (e) {
         log.error(`Failed to download profile: ${e.message}`);
-        return false;
+        return null;
     }
-    // Create profile directory + settings
-    const hash = profileHash(PROFILE_NAME);
-    const profileDir = (0, path_1.join)(root, 'profiles', hash);
+}
+/** Write settings.json into the profile directory (idempotent). */
+function writeProfileSettings(template) {
+    const root = userDataRoot();
+    const storageFile = (0, path_1.join)(root, 'globalStorage', 'storage.json');
+    if (!(0, fs_1.existsSync)(storageFile)) {
+        return;
+    }
+    const storage = JSON.parse((0, fs_1.readFileSync)(storageFile, 'utf-8'));
+    const profiles = storage.userDataProfiles ?? [];
+    const entry = profiles.find(p => p.name === PROFILE_NAME);
+    if (!entry) {
+        log.warn('Profile not found in storage.json — cannot write settings');
+        return;
+    }
+    const profileDir = (0, path_1.join)(root, 'profiles', entry.location);
     (0, fs_1.mkdirSync)(profileDir, { recursive: true });
     if (template.settings) {
         const settings = JSON.parse(template.settings);
         (0, fs_1.writeFileSync)((0, path_1.join)(profileDir, 'settings.json'), JSON.stringify(settings, null, 2), 'utf-8');
         log.info(`Wrote settings.json → ${profileDir}`);
     }
-    // Write extensions.json so VS Code knows which extensions the profile
-    // expects and can prompt the user to install them on first load.
-    if (template.extensions) {
-        const templateExts = JSON.parse(template.extensions);
-        const diskExts = templateExts.map(ext => ({
-            identifier: ext.identifier,
-            metadata: { source: 'gallery' }
-        }));
-        (0, fs_1.writeFileSync)((0, path_1.join)(profileDir, 'extensions.json'), JSON.stringify(diskExts, null, 2), 'utf-8');
-        log.info(`Wrote extensions.json → ${profileDir}`);
-    }
-    // Register the profile in storage.json
-    profiles.push({ location: hash, name: PROFILE_NAME });
-    storage.userDataProfiles = profiles;
-    (0, fs_1.writeFileSync)(storageFile, JSON.stringify(storage, null, '\t'), 'utf-8');
-    log.info('Registered profile in storage.json');
-    return true;
 }
 /** Resolve the VS Code CLI binary (bin/code or bin/code-insiders). */
 function vscodeCli() {
@@ -149,9 +130,10 @@ function vscodeCli() {
     return (0, path_1.join)(exeDir, 'bin', cmd + ext);
 }
 /** Open a new window under the Lab Guide profile and install the extension into it. */
-function openInProfile() {
+function openInProfile(template) {
     const cli = vscodeCli();
     // 1. Install the extension into the profile (runs headlessly).
+    //    This also creates the profile if it doesn't exist.
     const installCmd = `"${cli}" --profile "${PROFILE_NAME}" --install-extension ${EXTENSION_ID}`;
     log.info(`Installing extension: ${installCmd}`);
     const install = (0, child_process_1.spawn)(installCmd, { shell: true, stdio: 'ignore' });
@@ -159,7 +141,9 @@ function openInProfile() {
         if (code !== 0) {
             log.warn(`Extension install exited with code ${code} (may not be published yet)`);
         }
-        // 2. Open the window AFTER install finishes so the extension is ready.
+        // 2. Write settings.json AFTER install so the CLI doesn't overwrite it.
+        writeProfileSettings(template);
+        // 3. Open the window with settings + extension in place.
         const openCmd = `"${cli}" --profile "${PROFILE_NAME}"`;
         log.info(`Launching: ${openCmd}`);
         const child = (0, child_process_1.spawn)(openCmd, { shell: true, detached: true, stdio: 'ignore' });
@@ -186,12 +170,12 @@ async function activate(context) {
             if (choice !== 'Create Profile') {
                 return;
             }
-            const ok = await provisionProfile();
-            if (ok) {
-                openInProfile();
+            const template = await fetchProfileTemplate();
+            if (template) {
+                openInProfile(template);
             }
             else {
-                vscode.window.showErrorMessage('Failed to set up the Lab Guide profile. Check the Lab Guide output channel for details.');
+                vscode.window.showErrorMessage('Failed to download the Lab Guide profile. Check the Lab Guide output channel for details.');
             }
         });
         return;
