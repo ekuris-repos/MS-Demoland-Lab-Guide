@@ -14,6 +14,7 @@ export interface LabStep {
   focus?: string | string[];
   action?: string | string[];
   actionLabel?: string;
+  onLeave?: string | string[];
 }
 
 /** A slide entry contains one or more sub-steps shown when that slide is active. */
@@ -158,20 +159,40 @@ export class LabController {
   }
 
   /** Move to next sub-step within the current slide. */
-  nextStep() {
+  async nextStep() {
     const entry = this.currentEntry();
     if (!entry) { return; }
     if (this.currentSubStep < entry.steps.length - 1) {
+      await this.runStepOnLeave();
       this.currentSubStep++;
       this.showCurrentStep();
     }
   }
 
   /** Move to previous sub-step within the current slide. */
-  prevStep() {
+  async prevStep() {
     if (this.currentSubStep > 0) {
+      await this.runStepOnLeave();
       this.currentSubStep--;
       this.showCurrentStep();
+    }
+  }
+
+  /** Run the current step's onLeave commands (if any). */
+  private async runStepOnLeave() {
+    const entry = this.currentEntry();
+    if (!entry) { return; }
+    const step = entry.steps[this.currentSubStep];
+    if (!step?.onLeave) { return; }
+    const commands = Array.isArray(step.onLeave) ? step.onLeave : [step.onLeave];
+    for (const cmd of commands) {
+      this.log.info(`[onLeave:step] Slide ${this.currentSlide} step ${this.currentSubStep} → ${cmd}`);
+      try {
+        await vscode.commands.executeCommand(cmd);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.log.error(`[onLeave:step] ✗ ${cmd}: ${msg}`);
+      }
     }
   }
 
@@ -299,17 +320,20 @@ export class LabController {
   private async onSlideChanged(slide: number) {
     if (!this.lab || !this.guidePanel) { return; }
 
-    // Run onLeave cleanup for the previous slide
+    // Run step-level onLeave for the current step before leaving the slide
+    await this.runStepOnLeave();
+
+    // Run slide-level onLeave cleanup for the previous slide
     const prevEntry = this.lab.slides[String(this.currentSlide)];
     if (prevEntry?.onLeave) {
       const commands = Array.isArray(prevEntry.onLeave) ? prevEntry.onLeave : [prevEntry.onLeave];
       for (const cmd of commands) {
-        this.log.info(`[onLeave] Slide ${this.currentSlide} → ${cmd}`);
+        this.log.info(`[onLeave:slide] Slide ${this.currentSlide} → ${cmd}`);
         try {
           await vscode.commands.executeCommand(cmd);
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
-          this.log.error(`[onLeave] ✗ ${cmd}: ${msg}`);
+          this.log.error(`[onLeave:slide] ✗ ${cmd}: ${msg}`);
         }
       }
     }
