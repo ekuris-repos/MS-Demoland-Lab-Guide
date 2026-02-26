@@ -6,14 +6,14 @@ export class BrowserPanel {
   private panel: vscode.WebviewPanel | undefined;
   private currentUrl: string | undefined;
   private catalogUrl: string | undefined;
-  private messageHandler: ((msg: any) => void) | undefined;
+  private messageHandler: ((msg: any) => void | Promise<void>) | undefined;
 
   constructor(
     private context: vscode.ExtensionContext,
     private log: vscode.LogOutputChannel
   ) {}
 
-  onMessage(handler: (msg: any) => void) {
+  onMessage(handler: (msg: any) => void | Promise<void>) {
     this.messageHandler = handler;
   }
 
@@ -243,7 +243,7 @@ export class BrowserPanel {
       if (msg.type === 'iframeNavigated' && this.catalogUrl) {
         this.log.info('[BrowserPanel] Home requested, forwarding to controller for cleanup');
         // Forward to controller FIRST so it can clean up guide panel, editors, etc.
-        if (this.messageHandler) { this.messageHandler(msg); }
+        if (this.messageHandler) { await this.messageHandler(msg); }
         // Then navigate back to catalog
         this.log.info('[BrowserPanel] Returning to catalog');
         this.showCatalog(this.catalogUrl);

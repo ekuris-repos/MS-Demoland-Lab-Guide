@@ -2,7 +2,7 @@
   "name": "lab-guide",
   "displayName": "Lab Guide",
   "description": "Step-by-step lab guide panel with directional edge-glow arrows for hands-on training",
-  "version": "0.5.4",
+  "version": "0.6.1",
   "publisher": "ms-demoland",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -43,6 +43,10 @@
         "command": "labGuide.refreshBrowser",
         "title": "Lab Guide: Refresh Browser",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "labGuide.openSettings",
+        "title": "Lab Guide: Open Settings"
       }
     ],
     "menus": {
@@ -78,6 +82,36 @@
           "type": "string",
           "default": "https://ekuris-repos.github.io/MS-Demoland/",
           "description": "URL of the course catalog page to open on startup"
+        },
+        "labGuide.autoActions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically execute step actions (open files, terminal, chat) when advancing slides"
+        },
+        "labGuide.showTips": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show tip callouts in the guide panel"
+        },
+        "labGuide.enforceStepCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require sub-step completion before advancing to the next slide"
+        },
+        "labGuide.showNotes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show speaker notes below each slide by default"
+        },
+        "labGuide.followVSCodeMotion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Respect VS Code's Reduce Motion setting to disable animations (edge glows, arrows, opening animation)"
+        },
+        "labGuide.followVSCodeAccessibility": {
+          "type": "boolean",
+          "default": true,
+          "description": "Respect VS Code's accessibility settings for screen readers and high contrast themes"
         }
       }
     }

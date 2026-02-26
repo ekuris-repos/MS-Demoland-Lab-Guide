@@ -236,7 +236,7 @@ export class LabController {
   }
 
   /** Clean up all lab state and panels when returning to the catalog. */
-  private async returnToCatalog() {
+  async returnToCatalog() {
     this.log.info('[LabController] Returning to catalog — cleaning up');
     this.lab = undefined;
     this.currentSlide = 1;
@@ -247,8 +247,12 @@ export class LabController {
     this.guidePanel?.dispose();
     this.guidePanel = undefined;
 
-    // Remove workspace folders (keeps files on disk for fast re-clone)
-    await this.closeAllWorkspaceFolders();
+    // Remove workspace folders only (don't close editors — the browser panel stays open)
+    const folders = vscode.workspace.workspaceFolders;
+    if (folders && folders.length > 0) {
+      this.log.info(`[returnToCatalog] Removing ${folders.length} workspace folder(s)`);
+      vscode.workspace.updateWorkspaceFolders(0, folders.length);
+    }
 
     this.log.info('[LabController] Cleanup complete ✓');
   }
@@ -476,7 +480,7 @@ export class LabController {
     setTimeout(() => this.guidePanel?.reveal(), 300);
   }
 
-  private onBrowserMessage(msg: { type: string; server?: string; course?: string; slide?: number }) {
+  private async onBrowserMessage(msg: { type: string; server?: string; course?: string; slide?: number }) {
     this.log.info(`[LabController] onBrowserMessage: type=${msg.type}`);
     if (msg.type === 'labGuide.startCourse' && msg.server && msg.course) {
       this.log.info(`[LabController] Course selected → server=${msg.server}, course=${msg.course}`);
@@ -487,7 +491,7 @@ export class LabController {
       this.log.info('[LabController] Nav-next blocked — extra steps remain, sending glow');
       this.guidePanel?.postMessage({ type: 'glowNext' });
     } else if (msg.type === 'iframeNavigated') {
-      this.returnToCatalog();
+      await this.returnToCatalog();
     } else {
       this.log.warn(`[LabController] Unhandled browser message: ${JSON.stringify(msg)}`);
     }

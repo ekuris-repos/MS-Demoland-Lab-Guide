@@ -216,6 +216,10 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('labGuide.refreshBrowser', () => {
       log.info('Command: refreshBrowser');
       return controller!.refreshBrowser();
+    }),
+    vscode.commands.registerCommand('labGuide.openSettings', () => {
+      log.info('Command: openSettings');
+      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ms-demoland.lab-guide');
     })
   );
   log.info('Commands registered');

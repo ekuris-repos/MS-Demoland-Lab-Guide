@@ -232,8 +232,12 @@ class LabController {
         // Close the guide panel
         this.guidePanel?.dispose();
         this.guidePanel = undefined;
-        // Remove workspace folders (keeps files on disk for fast re-clone)
-        await this.closeAllWorkspaceFolders();
+        // Remove workspace folders only (don't close editors — the browser panel stays open)
+        const folders = vscode.workspace.workspaceFolders;
+        if (folders && folders.length > 0) {
+            this.log.info(`[returnToCatalog] Removing ${folders.length} workspace folder(s)`);
+            vscode.workspace.updateWorkspaceFolders(0, folders.length);
+        }
         this.log.info('[LabController] Cleanup complete ✓');
     }
     // ── Fetch JSON from a URL ─────────────────────────────────────
@@ -463,7 +467,7 @@ class LabController {
         }
         setTimeout(() => this.guidePanel?.reveal(), 300);
     }
-    onBrowserMessage(msg) {
+    async onBrowserMessage(msg) {
         this.log.info(`[LabController] onBrowserMessage: type=${msg.type}`);
         if (msg.type === 'labGuide.startCourse' && msg.server && msg.course) {
             this.log.info(`[LabController] Course selected → server=${msg.server}, course=${msg.course}`);
@@ -477,7 +481,7 @@ class LabController {
             this.guidePanel?.postMessage({ type: 'glowNext' });
         }
         else if (msg.type === 'iframeNavigated') {
-            this.returnToCatalog();
+            await this.returnToCatalog();
         }
         else {
             this.log.warn(`[LabController] Unhandled browser message: ${JSON.stringify(msg)}`);

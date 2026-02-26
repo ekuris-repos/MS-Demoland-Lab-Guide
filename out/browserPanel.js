@@ -259,7 +259,7 @@ class BrowserPanel {
                 this.log.info('[BrowserPanel] Home requested, forwarding to controller for cleanup');
                 // Forward to controller FIRST so it can clean up guide panel, editors, etc.
                 if (this.messageHandler) {
-                    this.messageHandler(msg);
+                    await this.messageHandler(msg);
                 }
                 // Then navigate back to catalog
                 this.log.info('[BrowserPanel] Returning to catalog');

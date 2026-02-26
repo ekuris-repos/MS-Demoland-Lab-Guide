@@ -215,6 +215,9 @@ async function activate(context) {
     }), vscode.commands.registerCommand('labGuide.refreshBrowser', () => {
         log.info('Command: refreshBrowser');
         return controller.refreshBrowser();
+    }), vscode.commands.registerCommand('labGuide.openSettings', () => {
+        log.info('Command: openSettings');
+        vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ms-demoland.lab-guide');
     }));
     log.info('Commands registered');
     // ── Auto-open catalog on startup ──────────────────────────────
