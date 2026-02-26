@@ -578,3 +578,81 @@ body[data-focus="up"]     { --glow-color: #F25022; }
   color: var(--vscode-testing-iconPassed, #73c991);
   opacity: 1;
 }
+
+/* ==========================================================================
+   Reduced Motion — respect OS preference and extension setting
+   ========================================================================== */
+
+/* Attribute-based selector for when extension JS injects it */
+body[data-reduce-motion] .edge-glow--active,
+body[data-reduce-motion] .arrow--active svg,
+body[data-reduce-motion] .step-nav-btn--glow,
+body[data-reduce-motion] .opening .edge-glow,
+body[data-reduce-motion] .opening .spinner {
+  animation: none !important;
+}
+
+body[data-reduce-motion] .edge-glow--active {
+  opacity: 0.7;
+}
+
+body[data-reduce-motion] .guide-container,
+body[data-reduce-motion] .step-card,
+body[data-reduce-motion] .copy-btn {
+  transition: none !important;
+}
+
+/* Also honor OS-level setting via media query */
+@media (prefers-reduced-motion: reduce) {
+  .edge-glow--active {
+    animation: none !important;
+    opacity: 0.7;
+  }
+
+  .arrow--active svg {
+    animation: none !important;
+  }
+
+  .step-nav-btn--glow {
+    animation: none !important;
+  }
+
+  .opening .edge-glow,
+  .opening .spinner {
+    animation: none !important;
+    display: none;
+  }
+
+  .guide-container {
+    transition: none !important;
+  }
+
+  .step-card {
+    transition: none !important;
+  }
+
+  .copy-btn {
+    transition: none !important;
+  }
+}
+
+/* ==========================================================================
+   High Contrast — respect VS Code high contrast themes
+   ========================================================================== */
+
+body[data-high-contrast] .edge-glow--active {
+  opacity: 1;
+  filter: contrast(1.5);
+}
+
+body[data-high-contrast] .step-card {
+  border: 2px solid var(--vscode-contrastBorder, #fff);
+}
+
+body[data-high-contrast] .step-nav-btn {
+  border: 2px solid var(--vscode-contrastBorder, #fff);
+}
+
+body[data-high-contrast] .badge {
+  border: 1px solid var(--vscode-contrastBorder, #fff);
+}

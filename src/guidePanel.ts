@@ -6,11 +6,24 @@ export class GuidePanel {
   constructor(
     private context: vscode.ExtensionContext,
     private onMessage: (msg: { type: string; text?: string }) => void
-  ) {}
+  ) {
+    // Re-send settings when configuration or theme changes
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('labGuide')) {
+          this.sendSettings();
+        }
+      }),
+      vscode.window.onDidChangeActiveColorTheme(() => {
+        this.sendSettings();
+      })
+    );
+  }
 
   show() {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Two);
+      this.sendSettings();
       return;
     }
 
@@ -31,6 +44,9 @@ export class GuidePanel {
 
     this.panel.webview.onDidReceiveMessage(msg => this.onMessage(msg));
     this.panel.onDidDispose(() => { this.panel = undefined; });
+
+    // Send initial settings after panel is created
+    this.sendSettings();
   }
 
   postMessage(message: unknown) {
@@ -44,6 +60,25 @@ export class GuidePanel {
 
   dispose() {
     this.panel?.dispose();
+  }
+
+  private sendSettings(): void {
+    if (!this.panel) { return; }
+
+    const config = vscode.workspace.getConfiguration('labGuide');
+    const reduceMotion = config.get<boolean>('followVSCodeMotion', true);
+    const followA11y = config.get<boolean>('followVSCodeAccessibility', true);
+
+    const isHighContrast = followA11y && (
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast ||
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight
+    );
+
+    this.panel.webview.postMessage({
+      type: 'setSettings',
+      reduceMotion: reduceMotion,
+      highContrast: isHighContrast
+    });
   }
 
   private getHtml(): string {

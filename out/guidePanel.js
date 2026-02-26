@@ -39,10 +39,19 @@ class GuidePanel {
     constructor(context, onMessage) {
         this.context = context;
         this.onMessage = onMessage;
+        // Re-send settings when configuration or theme changes
+        context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('labGuide')) {
+                this.sendSettings();
+            }
+        }), vscode.window.onDidChangeActiveColorTheme(() => {
+            this.sendSettings();
+        }));
     }
     show() {
         if (this.panel) {
             this.panel.reveal(vscode.ViewColumn.Two);
+            this.sendSettings();
             return;
         }
         this.panel = vscode.window.createWebviewPanel('labGuide.guide', 'Lab Guide', { viewColumn: vscode.ViewColumn.Two, preserveFocus: false }, {
@@ -55,6 +64,8 @@ class GuidePanel {
         this.panel.webview.html = this.getHtml();
         this.panel.webview.onDidReceiveMessage(msg => this.onMessage(msg));
         this.panel.onDidDispose(() => { this.panel = undefined; });
+        // Send initial settings after panel is created
+        this.sendSettings();
     }
     postMessage(message) {
         this.panel?.webview.postMessage(message);
@@ -65,6 +76,21 @@ class GuidePanel {
     }
     dispose() {
         this.panel?.dispose();
+    }
+    sendSettings() {
+        if (!this.panel) {
+            return;
+        }
+        const config = vscode.workspace.getConfiguration('labGuide');
+        const reduceMotion = config.get('followVSCodeMotion', true);
+        const followA11y = config.get('followVSCodeAccessibility', true);
+        const isHighContrast = followA11y && (vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast ||
+            vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight);
+        this.panel.webview.postMessage({
+            type: 'setSettings',
+            reduceMotion: reduceMotion,
+            highContrast: isHighContrast
+        });
     }
     getHtml() {
         const wv = this.panel.webview;

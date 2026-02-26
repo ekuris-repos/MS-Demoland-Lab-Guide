@@ -74,6 +74,18 @@
       void nextBtn.offsetWidth;
       nextBtn.classList.add('step-btn--glow');
     }
+    if (msg.type === 'setSettings') {
+      if (msg.reduceMotion) {
+        document.body.setAttribute('data-reduce-motion', '');
+      } else {
+        document.body.removeAttribute('data-reduce-motion');
+      }
+      if (msg.highContrast) {
+        document.body.setAttribute('data-high-contrast', '');
+      } else {
+        document.body.removeAttribute('data-high-contrast');
+      }
+    }
   });
 
   /* ---- Step navigation (dismiss opening on user action) ---- */
@@ -260,12 +272,28 @@
 
   // Only play the opening animation on first launch, not on tab restore
   if (isOpening) {
-    document.body.classList.add('opening');
-    chaseEdges.forEach(function (el) {
-      if (el) { el.classList.add('edge-glow--chase'); }
-    });
-    // Auto-dismiss after 2 full rotations (~3.2 s)
-    setTimeout(dismissOpening, 3200);
+    // Skip animation entirely if OS or user prefers reduced motion
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+        document.body.hasAttribute('data-reduce-motion')) {
+      isOpening = false;
+      vscode.setState(Object.assign({}, vscode.getState() || {}, { opened: true }));
+      if (pendingFocus) {
+        applyFocus(pendingFocus);
+        pendingFocus = null;
+      }
+    } else {
+      document.body.classList.add('opening');
+      chaseEdges.forEach(function (el) {
+        if (el) { el.classList.add('edge-glow--chase'); }
+      });
+      // Auto-dismiss after 2 full rotations (~3.2 s)
+      setTimeout(dismissOpening, 3200);
+    }
+  }
+
+  // Apply OS-level reduced motion as a fallback
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.body.setAttribute('data-reduce-motion', '');
   }
 
   /* ---- Tell extension we're alive ---- */

@@ -75,6 +75,10 @@ class BrowserPanel {
         this.panel.title = name;
         this.log.info(`[BrowserPanel] Showing slides with nav bar: ${url}`);
         const nonce = getNonce();
+        const config = vscode.workspace.getConfiguration('labGuide');
+        const showNotes = config.get('showNotes', true);
+        const enforceSteps = config.get('enforceStepCompletion', true);
+        const followMotion = config.get('followVSCodeMotion', true);
         this.panel.webview.html = /*html*/ `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -100,11 +104,7 @@ class BrowserPanel {
     .nav-bar button:disabled { opacity: 0.4; cursor: default; }
     .nav-bar .nav-center { display: flex; align-items: center; gap: 8px; }
     .nav-bar .home-btn { font-size: 16px; padding: 4px 8px; }
-    .nav-bar .notes-btn { padding: 4px 8px; }
-    .nav-bar .notes-btn.active { background: #388bfd; border-color: #388bfd; color: #fff; }
-    .skip-steps { display: flex; align-items: center; gap: 4px; margin-left: 4px; }
-    .skip-steps input { accent-color: #388bfd; cursor: pointer; }
-    .skip-steps label { font-size: 11px; color: #8b949e; cursor: pointer; white-space: nowrap; }
+    .settings-btn { padding: 4px 8px; font-size: 15px; }
     .float-hint {
       position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%);
       background: #388bfd; color: #fff; font-size: 12px; font-weight: 600;
@@ -116,6 +116,12 @@ class BrowserPanel {
       0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
       100% { opacity: 0; transform: translateX(-50%) translateY(-60px); }
     }
+    @media (prefers-reduced-motion: reduce) {
+      .float-hint {
+        animation: none !important;
+        opacity: 1;
+      }
+    }
   </style>
 </head>
 <body>
@@ -126,9 +132,8 @@ class BrowserPanel {
       <button id="prevBtn" title="Previous slide" disabled>&#8592; Prev</button>
       <span id="counter">1 / ?</span>
       <button id="nextBtn" title="Next slide">Next &#8594;</button>
-      <span class="skip-steps"><input type="checkbox" id="skipSteps"><label for="skipSteps">Skip Steps</label></span>
     </div>
-    <button class="notes-btn" id="notesBtn" title="Toggle speaker notes (N)">&#9998; Notes</button>
+    <button class="settings-btn" id="settingsBtn" title="Lab Guide Settings">&#9881;</button>
   </div>
   <script nonce="${nonce}">
     (function() {
@@ -137,13 +142,14 @@ class BrowserPanel {
       var prevBtn = document.getElementById('prevBtn');
       var nextBtn = document.getElementById('nextBtn');
       var homeBtn = document.getElementById('homeBtn');
-      var notesBtn = document.getElementById('notesBtn');
+      var settingsBtn = document.getElementById('settingsBtn');
       var counterEl = document.getElementById('counter');
       var currentSlide = 1;
       var totalSlides = 0;
-      var notesOn = false;
+      var notesOn = ${showNotes};
       var hasExtraSteps = false;
-      var skipSteps = document.getElementById('skipSteps');
+      var ENFORCE_STEPS = ${enforceSteps};
+      var FOLLOW_MOTION = ${followMotion};
 
       function updateUI() {
         prevBtn.disabled = currentSlide <= 1;
@@ -155,8 +161,18 @@ class BrowserPanel {
         var hint = document.createElement('div');
         hint.className = 'float-hint';
         hint.textContent = 'Extra steps available!';
+        if (!FOLLOW_MOTION) {
+          hint.style.animation = 'floatUp 2s ease-out forwards';
+        }
         document.body.appendChild(hint);
         hint.addEventListener('animationend', function() { hint.remove(); });
+      }
+
+      // Apply initial notes setting on iframe load
+      if (notesOn) {
+        iframe.addEventListener('load', function() {
+          iframe.contentWindow.postMessage({ type: 'toggleNotes' }, '*');
+        });
       }
 
       // Listen for init message from slides.js (total count)
@@ -182,7 +198,7 @@ class BrowserPanel {
       });
 
       nextBtn.addEventListener('click', function() {
-        if (hasExtraSteps && !skipSteps.checked) {
+        if (hasExtraSteps && ENFORCE_STEPS) {
           showFloatHint();
           vscode.postMessage({ type: 'extraStepsBlocked' });
           return;
@@ -199,10 +215,8 @@ class BrowserPanel {
         vscode.postMessage({ type: 'iframeNavigated' });
       });
 
-      notesBtn.addEventListener('click', function() {
-        notesOn = !notesOn;
-        notesBtn.classList.toggle('active', notesOn);
-        iframe.contentWindow.postMessage({ type: 'toggleNotes' }, '*');
+      settingsBtn.addEventListener('click', function() {
+        vscode.postMessage({ type: 'openSettings' });
       });
 
       // Keyboard nav in the parent webview
@@ -214,7 +228,8 @@ class BrowserPanel {
           e.preventDefault();
           prevBtn.click();
         } else if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) {
-          notesBtn.click();
+          notesOn = !notesOn;
+          iframe.contentWindow.postMessage({ type: 'toggleNotes' }, '*');
         }
       });
 
@@ -255,6 +270,10 @@ class BrowserPanel {
         this.panel = vscode.window.createWebviewPanel('labGuide.browser', 'Course Catalog', { viewColumn: vscode.ViewColumn.One, preserveFocus: true }, { enableScripts: true, retainContextWhenHidden: true });
         this.panel.webview.onDidReceiveMessage(async (msg) => {
             this.log.info(`[BrowserPanel] Received message: ${JSON.stringify(msg)}`);
+            if (msg.type === 'openSettings') {
+                vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ms-demoland.lab-guide');
+                return;
+            }
             if (msg.type === 'iframeNavigated' && this.catalogUrl) {
                 this.log.info('[BrowserPanel] Home requested, forwarding to controller for cleanup');
                 // Forward to controller FIRST so it can clean up guide panel, editors, etc.

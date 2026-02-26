@@ -356,10 +356,13 @@ export class LabController {
     const total = entry.steps.length;
     this.statusBarItem.text = `$(book) Slide ${this.currentSlide} — Step ${this.currentSubStep + 1}/${total} — ${step.title}`;
 
+    const showTips = vscode.workspace.getConfiguration('labGuide').get<boolean>('showTips', true);
+
     this.guidePanel.postMessage({
       type: 'setState',
       step: {
         ...step,
+        tip: showTips ? step.tip : undefined,
         index: this.currentSubStep,
         total,
         slide: this.currentSlide
@@ -380,6 +383,12 @@ export class LabController {
 
   /** Run a VS Code command only if its target isn't already visible. */
   private async executeAction(cmd: string) {
+    const autoActions = vscode.workspace.getConfiguration('labGuide').get<boolean>('autoActions', true);
+    if (!autoActions) {
+      this.log.info(`[executeAction] Auto-actions disabled, skipping: ${cmd}`);
+      return;
+    }
+
     const tabs = vscode.window.tabGroups.all.flatMap(g => g.tabs);
 
     // Guard: skip if the target is already open
