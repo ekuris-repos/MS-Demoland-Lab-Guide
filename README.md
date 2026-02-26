@@ -23,4 +23,6 @@ The extension launches automatically and opens the course catalog. Pick a course
 
 ## Privacy
 
-This extension does not collect, store, or transmit any personal data. No telemetry, no analytics, no sign-in required. The only network requests are to GitHub Pages to load course content.
+When you start a lab, this extension reads your GitHub username from your existing Copilot session to track training progress. No additional sign-in is required. The only other network requests are to GitHub Pages to load course content.
+
+A GitHub Copilot license is not required to view course slides in VS Code. It is required to use the interactive lab companion.

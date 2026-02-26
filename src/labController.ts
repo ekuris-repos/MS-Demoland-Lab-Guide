@@ -79,17 +79,26 @@ export class LabController {
         this.currentSubStep = 0;
         this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
 
-        // Silently harvest GitHub identity (already signed in for Copilot)
-        try {
-          const session = await vscode.authentication.getSession('github', ['user:email'], { silent: true });
-          if (session) {
-            this.log.info(`[metrics] course="${coursePath}" user="${session.account.label}" userId="${session.account.id}"`);
-          } else {
-            this.log.info(`[metrics] course="${coursePath}" user=unknown (no GitHub session)`);
+        // ── GitHub session gate (required for lab companion) ─────
+        let ghSession = await vscode.authentication.getSession('github', ['user:email'], { silent: true });
+        if (!ghSession) {
+          this.log.warn('[startLabFromUri] No GitHub session — prompting user');
+          const signIn = await vscode.window.showWarningMessage(
+            'The interactive lab companion requires a GitHub Copilot license. Please sign in to GitHub to continue.',
+            'Sign In'
+          );
+          if (signIn === 'Sign In') {
+            ghSession = await vscode.authentication.getSession('github', ['user:email'], { createIfNone: true }) ?? null;
           }
-        } catch {
-          this.log.info(`[metrics] course="${coursePath}" user=unknown (auth lookup failed)`);
+          if (!ghSession) {
+            this.log.info('[startLabFromUri] No GitHub session — lab companion blocked');
+            vscode.window.showErrorMessage(
+              'A GitHub Copilot license is required for the lab companion. You can still browse course slides from the catalog.'
+            );
+            return;
+          }
         }
+        this.log.info(`[metrics] course="${coursePath}" user="${ghSession.account.label}" userId="${ghSession.account.id}"`);
 
         // Clean slate: close all workspace folders so the learner starts fresh
         await this.closeAllWorkspaceFolders();
