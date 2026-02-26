@@ -278,19 +278,6 @@ export class LabController {
     });
   }
 
-  // ── Quick probe to check if a URL is reachable ────────────────
-  private probeUrl(url: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const client = url.startsWith('https') ? https : http;
-      const req = client.get(url, { timeout: 3000 }, (res) => {
-        res.resume();
-        resolve(res.statusCode !== undefined && res.statusCode < 400);
-      });
-      req.on('error', () => resolve(false));
-      req.on('timeout', () => { req.destroy(); resolve(false); });
-    });
-  }
-
   /** Get the current slide entry (if any). */
   private currentEntry(): SlideEntry | undefined {
     return this.lab?.slides[String(this.currentSlide)];

@@ -14,13 +14,6 @@ const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
 
 // ── Profile provisioning helpers ────────────────────────────────
 
-/** Generate an 8-char hex hash (same style VS Code uses for profile dirs). */
-function profileHash(name: string): string {
-  let h = 0;
-  for (const ch of name) { h = ((h << 5) - h + ch.charCodeAt(0)) | 0; }
-  return (h >>> 0).toString(16).padStart(8, '0');
-}
-
 /** Resolve the VS Code user-data root (handles Code vs Code - Insiders). */
 function userDataRoot(): string {
   const appData = process.env.APPDATA!;
