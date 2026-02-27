@@ -97,6 +97,21 @@ async function fetchProfileTemplate() {
         return null;
     }
 }
+/** Check whether the Lab Guide profile already exists in VS Code's storage. */
+function profileExists() {
+    const storageFile = (0, path_1.join)(userDataRoot(), 'globalStorage', 'storage.json');
+    if (!(0, fs_1.existsSync)(storageFile)) {
+        return false;
+    }
+    try {
+        const storage = JSON.parse((0, fs_1.readFileSync)(storageFile, 'utf-8'));
+        const profiles = storage.userDataProfiles ?? [];
+        return profiles.some(p => p.name === PROFILE_NAME);
+    }
+    catch {
+        return false;
+    }
+}
 /** Write settings.json into the profile directory (idempotent). */
 function writeProfileSettings(template) {
     const root = userDataRoot();
@@ -173,20 +188,30 @@ async function activate(context) {
     // ── Profile gate ──────────────────────────────────────────────
     const profileActive = vscode.workspace.getConfiguration('labGuide')
         .get('profileActive', false);
+    // ── Run Profiler command (always available) ────────────────────
+    context.subscriptions.push(vscode.commands.registerCommand('labGuide.runProfiler', async () => {
+        log.info('Command: runProfiler');
+        const template = await fetchProfileTemplate();
+        if (template) {
+            openInProfile(template);
+        }
+        else {
+            vscode.window.showErrorMessage('Failed to download the Lab Guide profile. Check the Lab Guide output channel for details.');
+        }
+    }));
     if (!profileActive) {
         log.info('labGuide.profileActive is false — not in Lab Guide profile');
-        vscode.window.showInformationMessage('Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.', 'Create Profile').then(async (choice) => {
-            if (choice !== 'Create Profile') {
-                return;
-            }
-            const template = await fetchProfileTemplate();
-            if (template) {
-                openInProfile(template);
-            }
-            else {
-                vscode.window.showErrorMessage('Failed to download the Lab Guide profile. Check the Lab Guide output channel for details.');
-            }
-        });
+        if (profileExists()) {
+            log.info('Lab Guide profile already exists — suppressing setup toast');
+        }
+        else {
+            vscode.window.showInformationMessage('Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.', 'Create Profile').then(async (choice) => {
+                if (choice !== 'Create Profile') {
+                    return;
+                }
+                vscode.commands.executeCommand('labGuide.runProfiler');
+            });
+        }
         return;
     }
     log.info('Running inside Lab Guide profile ✓');

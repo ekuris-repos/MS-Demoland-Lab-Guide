@@ -2,7 +2,7 @@
   "name": "lab-guide",
   "displayName": "Lab Guide",
   "description": "Step-by-step lab guide panel with directional edge-glow arrows for hands-on training",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "ms-demoland",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -47,6 +47,10 @@
       {
         "command": "labGuide.openSettings",
         "title": "Lab Guide: Open Settings"
+      },
+      {
+        "command": "labGuide.runProfiler",
+        "title": "Lab Guide: Run Profiler"
       }
     ],
     "menus": {
