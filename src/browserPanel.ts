@@ -281,9 +281,10 @@ export class BrowserPanel {
   /** Inject <base> tag and click handler into fetched catalog HTML. */
   private injectCatalogHandler(html: string, catalogUrl: string): string {
     const base = catalogUrl.replace(/\/index\.html$/i, '').replace(/\/+$/, '');
+    const nonce = getNonce();
 
     const handler = /*html*/ `
-<script>
+<script nonce="${nonce}">
 (function() {
   var vscode = acquireVsCodeApi();
   console.log('[Catalog] Handler injected, base=${base}');
@@ -327,8 +328,8 @@ export class BrowserPanel {
 </script>`;
 
     let modified = html;
-    // Inject <base> and CSP so relative URLs and inline scripts work in the webview
-    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeHtml(base)}/ data:; style-src ${escapeHtml(base)}/ 'unsafe-inline'; font-src ${escapeHtml(base)}/; script-src 'unsafe-inline';">`;
+    // Inject <base> and CSP — nonce-gate scripts instead of 'unsafe-inline'
+    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeHtml(base)}/ data:; style-src ${escapeHtml(base)}/ 'unsafe-inline'; font-src ${escapeHtml(base)}/; script-src 'nonce-${nonce}';">`;
     modified = modified.replace(/<head([^>]*)>/i, `<head$1>\n<base href="${escapeHtml(base)}/">\n${csp}`);
     // Remove the original catalog script that fires vscode:// URIs into the system browser.
     // It conflicts with our injected handler since the webview is not an iframe.
@@ -336,6 +337,8 @@ export class BrowserPanel {
       /\/\/\s*──\s*Lab Guide integration[\s\S]*?<\/script>/i,
       '</script>'
     );
+    // Add nonce to surviving inline <script> tags (e.g. tab switching)
+    modified = modified.replace(/<script(?![^>]*\bnonce\b)(?![^>]*\bsrc\b)([^>]*)>/gi, `<script nonce="${nonce}"$1>`);
     // Inject our handler before </body>
     modified = modified.replace(/<\/body>/i, handler + '\n</body>');
 
