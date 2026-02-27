@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { spawn } from 'child_process';
 import { get as httpsGet } from 'https';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { LabController } from './labController';
 
@@ -77,6 +77,51 @@ function profileExists(): boolean {
     const profiles: Array<{ name: string }> = storage.userDataProfiles ?? [];
     return profiles.some(p => p.name === PROFILE_NAME);
   } catch {
+    return false;
+  }
+}
+
+/** Open a new VS Code window in the existing Lab Guide profile. */
+function switchToProfile() {
+  const cli = vscodeCli();
+  log.info('Switching to existing Lab Guide profile…');
+  const child = spawn(`"${cli}" --profile "${PROFILE_NAME}"`, {
+    shell: true, detached: true, stdio: 'ignore'
+  });
+  child.unref();
+}
+
+/**
+ * Remove the Lab Guide profile from VS Code's storage and delete its
+ * settings directory. Returns true if the profile was found and removed.
+ */
+function removeProfile(): boolean {
+  const root = userDataRoot();
+  const storageFile = join(root, 'globalStorage', 'storage.json');
+  if (!existsSync(storageFile)) { return false; }
+
+  try {
+    const storage = JSON.parse(readFileSync(storageFile, 'utf-8'));
+    const profiles: Array<{ name: string; location: string }> =
+      storage.userDataProfiles ?? [];
+    const idx = profiles.findIndex(p => p.name === PROFILE_NAME);
+    if (idx === -1) { return false; }
+
+    const location = profiles[idx].location;
+    profiles.splice(idx, 1);
+    storage.userDataProfiles = profiles;
+    writeFileSync(storageFile, JSON.stringify(storage, null, 2), 'utf-8');
+    log.info(`Removed "${PROFILE_NAME}" entry from storage.json`);
+
+    // Delete the profile's settings directory
+    const profileDir = join(root, 'profiles', location);
+    if (existsSync(profileDir)) {
+      rmSync(profileDir, { recursive: true, force: true });
+      log.info(`Deleted profile directory: ${profileDir}`);
+    }
+    return true;
+  } catch (e: any) {
+    log.error(`Failed to remove profile: ${e.message}`);
     return false;
   }
 }
@@ -175,7 +220,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const profileActive = vscode.workspace.getConfiguration('labGuide')
     .get<boolean>('profileActive', false);
 
-  // ── Run Profiler command (always available) ────────────────────
+  // ── Commands available outside the profile ────────────────────
   context.subscriptions.push(
     vscode.commands.registerCommand('labGuide.runProfiler', async () => {
       log.info('Command: runProfiler');
@@ -187,13 +232,39 @@ export async function activate(context: vscode.ExtensionContext) {
           'Failed to download the Lab Guide profile. Check the Lab Guide output channel for details.'
         );
       }
+    }),
+    vscode.commands.registerCommand('labGuide.removeProfile', () => {
+      log.info('Command: removeProfile');
+      if (removeProfile()) {
+        vscode.window.showInformationMessage('Lab Guide profile removed.');
+      } else {
+        vscode.window.showWarningMessage('No Lab Guide profile found to remove.');
+      }
     })
   );
 
   if (!profileActive) {
     log.info('labGuide.profileActive is false — not in Lab Guide profile');
+    const exists = profileExists();
 
-    if (profileExists()) {
+    // Status bar — subtle, non-intrusive reminder that Lab Guide is available
+    const statusBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 0);
+    statusBtn.text = '$(beaker) Lab Guide';
+    statusBtn.tooltip = exists
+      ? 'Switch to the Lab Guide profile'
+      : 'Create the Lab Guide profile';
+    statusBtn.command = exists ? 'labGuide.switchToProfile' : 'labGuide.runProfiler';
+    statusBtn.show();
+    context.subscriptions.push(statusBtn);
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('labGuide.switchToProfile', () => {
+        log.info('Command: switchToProfile');
+        switchToProfile();
+      })
+    );
+
+    if (exists) {
       log.info('Lab Guide profile already exists — suppressing setup toast');
     } else {
       vscode.window.showInformationMessage(
