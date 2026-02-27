@@ -114,7 +114,7 @@ export class LabController {
         this.currentSubStep = 0;
         this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
 
-        // ── GitHub session (best-effort — slides load regardless) ─────
+        // ── GitHub session (best-effort for metrics only) ─────────────
         const ghSession = await vscode.authentication.getSession('github', [], { silent: true });
         if (ghSession) {
           this.log.info(`[metrics] course="${coursePath}" user="${ghSession.account.label}" userId="${ghSession.account.id}"`);
@@ -144,27 +144,22 @@ export class LabController {
         this.log.info(`[startLabFromUri] Navigating browser panel → ${courseUrl}`);
         this.browserPanel.showSlides(courseUrl);
 
-        // Guide panel only loads when we have a tracked session so the
-        // extension can navigate slides and record progress.
-        if (ghSession) {
-          this.log.info('[startLabFromUri] Creating/revealing guide panel in Column 2');
-          if (!this.guidePanel) {
-            this.log.info('[startLabFromUri] Creating new GuidePanel');
-            this.guidePanel = new GuidePanel(this.context, msg => this.onWebviewMessage(msg));
-          } else {
-            this.log.info('[startLabFromUri] Reusing existing GuidePanel');
-          }
-          this.guidePanel.show();
-          this.log.info('[startLabFromUri] GuidePanel.show() called');
-
-          this.guidePanel.postMessage({ type: 'setTitle', title: this.lab.title });
-          this.log.info(`[startLabFromUri] Sent setTitle: "${this.lab.title}"`);
-
-          this.statusBarItem.show();
-          this.showCurrentStep();
+        // Guide panel — always open so the learner gets step-by-step instructions
+        this.log.info('[startLabFromUri] Creating/revealing guide panel in Column 2');
+        if (!this.guidePanel) {
+          this.log.info('[startLabFromUri] Creating new GuidePanel');
+          this.guidePanel = new GuidePanel(this.context, msg => this.onWebviewMessage(msg));
         } else {
-          this.log.info('[startLabFromUri] Skipping guide panel — no tracked session');
+          this.log.info('[startLabFromUri] Reusing existing GuidePanel');
         }
+        this.guidePanel.show();
+        this.log.info('[startLabFromUri] GuidePanel.show() called');
+
+        this.guidePanel.postMessage({ type: 'setTitle', title: this.lab.title });
+        this.log.info(`[startLabFromUri] Sent setTitle: "${this.lab.title}"`);
+
+        this.statusBarItem.show();
+        this.showCurrentStep();
         this.log.info('[startLabFromUri] Lab fully initialized ✓');
       }
     );
