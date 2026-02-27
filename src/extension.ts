@@ -301,3 +301,4 @@ export function deactivate() {
   log.info('Lab Guide extension deactivating…');
   controller?.dispose();
 }
+// Demo change for screenshot capture
