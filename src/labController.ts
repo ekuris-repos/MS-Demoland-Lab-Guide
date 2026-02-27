@@ -69,6 +69,8 @@ export class LabController {
   // ── Open catalog in our browser panel ──────────────────────────
   async openCatalog(url: string) {
     this.log.info(`openCatalog → ${url}`);
+    // Clear any active lab so re-activation doesn't restore it
+    await this.context.globalState.update('activeLab', undefined);
     await this.browserPanel.showCatalog(url);
   }
 
@@ -113,6 +115,9 @@ export class LabController {
         this.currentSlide = 1;
         this.currentSubStep = 0;
         this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
+
+        // Persist active lab so we can restore after a workspace reload
+        await this.context.globalState.update('activeLab', { server, course: coursePath });
 
         // ── GitHub session (best-effort for metrics only) ─────────────
         const ghSession = await vscode.authentication.getSession('github', [], { silent: true });

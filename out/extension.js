@@ -338,24 +338,32 @@ async function activate(context) {
     }));
     log.info('Commands registered');
     // ── Auto-open catalog on startup ──────────────────────────────
-    const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl');
-    log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
-    if (catalogUrl) {
-        log.info('Cleaning up previous workspace state');
-        // Close all editor tabs
-        vscode.commands.executeCommand('workbench.action.closeAllEditors').then(async () => {
-            // Close sidebar (Extensions pane, Explorer, etc.)
-            await vscode.commands.executeCommand('workbench.action.closeSidebar');
-            // Close panel area (Terminal, Output, Problems, etc.)
-            await vscode.commands.executeCommand('workbench.action.closePanel');
-            // Close auxiliary bar (Copilot Chat secondary sidebar)
-            await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
-            log.info(`Opening catalog → ${catalogUrl}`);
-            controller.openCatalog(catalogUrl);
-        }, (err) => log.error(`Workspace cleanup failed: ${err}`));
+    const activeLab = context.globalState.get('activeLab');
+    if (activeLab) {
+        // A lab was in progress (e.g. window reloaded after cloning) — restore it
+        log.info(`Restoring active lab: server="${activeLab.server}", course="${activeLab.course}"`);
+        controller.startLabFromUri(activeLab.server, activeLab.course);
     }
     else {
-        log.warn('No catalogUrl configured — skipping auto-open');
+        const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl');
+        log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
+        if (catalogUrl) {
+            log.info('Cleaning up previous workspace state');
+            // Close all editor tabs
+            vscode.commands.executeCommand('workbench.action.closeAllEditors').then(async () => {
+                // Close sidebar (Extensions pane, Explorer, etc.)
+                await vscode.commands.executeCommand('workbench.action.closeSidebar');
+                // Close panel area (Terminal, Output, Problems, etc.)
+                await vscode.commands.executeCommand('workbench.action.closePanel');
+                // Close auxiliary bar (Copilot Chat secondary sidebar)
+                await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+                log.info(`Opening catalog → ${catalogUrl}`);
+                controller.openCatalog(catalogUrl);
+            }, (err) => log.error(`Workspace cleanup failed: ${err}`));
+        }
+        else {
+            log.warn('No catalogUrl configured — skipping auto-open');
+        }
     }
     // ── URI handler ───────────────────────────────────────────────
     context.subscriptions.push(vscode.window.registerUriHandler({
