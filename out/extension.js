@@ -254,6 +254,11 @@ async function activate(context) {
     if (!profileActive) {
         log.info('labGuide.profileActive is false — not in Lab Guide profile');
         const exists = profileExists();
+        const firstLaunch = !context.globalState.get('launched');
+        context.subscriptions.push(vscode.commands.registerCommand('labGuide.switchToProfile', () => {
+            log.info('Command: switchToProfile');
+            switchToProfile();
+        }));
         // Status bar — subtle, non-intrusive reminder that Lab Guide is available
         const statusBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 0);
         statusBtn.text = '$(beaker) Lab Guide';
@@ -263,20 +268,26 @@ async function activate(context) {
         statusBtn.command = exists ? 'labGuide.switchToProfile' : 'labGuide.runProfiler';
         statusBtn.show();
         context.subscriptions.push(statusBtn);
-        context.subscriptions.push(vscode.commands.registerCommand('labGuide.switchToProfile', () => {
-            log.info('Command: switchToProfile');
-            switchToProfile();
-        }));
-        if (exists) {
-            log.info('Lab Guide profile already exists — suppressing setup toast');
+        if (firstLaunch) {
+            // First activation after install — auto-launch into the profile
+            await context.globalState.update('launched', true);
+            log.info('First activation — auto-launching into profile');
+            if (exists) {
+                log.info('Profile exists — switching to it');
+                switchToProfile();
+            }
+            else {
+                vscode.window.showInformationMessage('Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.', 'Create Profile').then(async (choice) => {
+                    if (choice !== 'Create Profile') {
+                        return;
+                    }
+                    vscode.commands.executeCommand('labGuide.runProfiler');
+                });
+            }
         }
         else {
-            vscode.window.showInformationMessage('Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.', 'Create Profile').then(async (choice) => {
-                if (choice !== 'Create Profile') {
-                    return;
-                }
-                vscode.commands.executeCommand('labGuide.runProfiler');
-            });
+            // Subsequent launches — status bar is enough, don't nag
+            log.info('Returning user — status bar only, no auto-launch');
         }
         return;
     }
