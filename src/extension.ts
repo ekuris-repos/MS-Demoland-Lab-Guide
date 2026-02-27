@@ -328,6 +328,19 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('labGuide.openSettings', () => {
       log.info('Command: openSettings');
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ms-demoland.lab-guide');
+    }),
+    vscode.commands.registerCommand('labGuide.openCatalog', async () => {
+      log.info('Command: openCatalog');
+      const catalogUrl = vscode.workspace.getConfiguration('labGuide').get<string>('catalogUrl');
+      if (!catalogUrl) {
+        vscode.window.showWarningMessage('No catalog URL configured.');
+        return;
+      }
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.commands.executeCommand('workbench.action.closeSidebar');
+      await vscode.commands.executeCommand('workbench.action.closePanel');
+      await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+      controller!.openCatalog(catalogUrl);
     })
   );
   log.info('Commands registered');

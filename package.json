@@ -2,7 +2,7 @@
   "name": "lab-guide",
   "displayName": "Lab Guide",
   "description": "Step-by-step lab guide panel with directional edge-glow arrows for hands-on training",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "publisher": "ms-demoland",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -59,6 +59,10 @@
       {
         "command": "labGuide.removeProfile",
         "title": "Lab Guide: Remove Profile"
+      },
+      {
+        "command": "labGuide.openCatalog",
+        "title": "Lab Guide: Open Catalog"
       }
     ],
     "menus": {
@@ -126,7 +130,53 @@
           "description": "Respect VS Code's accessibility settings for screen readers and high contrast themes"
         }
       }
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "labGuide.welcome",
+        "title": "Getting Started with Lab Guide",
+        "description": "Learn how to navigate courses, switch profiles, and use commands.",
+        "when": "config.labGuide.profileActive",
+        "steps": [
+          {
+            "id": "labGuide.welcome.intro",
+            "title": "Welcome to Lab Guide",
+            "description": "You are running inside the Lab Guide profile. This is an isolated VS Code environment that keeps your personal settings safe while you work through training labs.\n\nYour extensions, themes, and keybindings in other profiles are untouched.",
+            "media": {
+              "svg": "media/walkthrough-welcome.svg",
+              "altText": "Welcome to Lab Guide"
+            }
+          },
+          {
+            "id": "labGuide.welcome.statusbar",
+            "title": "Switching Back Anytime",
+            "description": "When you are in another VS Code profile, look for the **$(beaker) Lab Guide** button in the bottom status bar. Click it to switch back to this profile instantly.\n\nYou can also use the Command Palette: **Lab Guide: Switch to Profile**.",
+            "media": {
+              "svg": "media/walkthrough-statusbar.svg",
+              "altText": "Status bar showing the Lab Guide button"
+            }
+          },
+          {
+            "id": "labGuide.welcome.commands",
+            "title": "Command Palette",
+            "description": "All Lab Guide commands are available via `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS). Type **Lab Guide** to see them:\n\n- **Start Lab** — launch a lab interactively\n- **Run Profiler** — recreate the profile from scratch\n- **Switch to Profile** — open the Lab Guide profile\n- **Remove Profile** — clean up when training is done\n- **Open Settings** — configure behavior",
+            "media": {
+              "svg": "media/walkthrough-commands.svg",
+              "altText": "Command Palette showing Lab Guide commands"
+            }
+          },
+          {
+            "id": "labGuide.welcome.catalog",
+            "title": "Open the Course Catalog",
+            "description": "Ready to start? The catalog resets your workspace, closes open panels, and loads the full list of available courses. Click a course card to begin a guided lab session.\n\n[Open Catalog](command:labGuide.openCatalog)",
+            "media": {
+              "svg": "media/walkthrough-catalog.svg",
+              "altText": "Course catalog with cards for each course"
+            }
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "build": "tsc",
