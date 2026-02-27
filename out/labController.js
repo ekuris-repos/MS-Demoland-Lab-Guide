@@ -510,6 +510,9 @@ class LabController {
             case 'replayAction':
                 this.replayCurrentAction();
                 break;
+            case 'runValidation':
+                this.runValidation();
+                break;
             case 'copyToClipboard':
                 if (msg.text) {
                     vscode.env.clipboard.writeText(msg.text);
@@ -532,6 +535,84 @@ class LabController {
             await this.executeAction(cmd);
         }
         setTimeout(() => this.guidePanel?.reveal(), 300);
+    }
+    // ── Workspace validation ──────────────────────────────────────
+    /** Run all validation checks defined on the current step. */
+    async runValidation() {
+        const entry = this.currentEntry();
+        if (!entry) {
+            return;
+        }
+        const step = entry.steps[this.currentSubStep];
+        if (!step?.validate?.length) {
+            return;
+        }
+        this.log.info(`[validate] Running ${step.validate.length} check(s) on slide ${this.currentSlide} step ${this.currentSubStep}`);
+        this.guidePanel?.postMessage({ type: 'validationRunning' });
+        const results = [];
+        for (const check of step.validate) {
+            results.push(await this.executeValidation(check));
+        }
+        this.log.info(`[validate] Results: ${results.map(r => `${r.passed ? '✓' : '✗'} ${r.label}`).join(', ')}`);
+        this.guidePanel?.postMessage({ type: 'validationResults', results });
+    }
+    /** Execute a single validation check against the workspace. */
+    async executeValidation(check) {
+        const folders = vscode.workspace.workspaceFolders;
+        if (!folders?.length) {
+            return { label: check.label, passed: false, detail: 'No workspace folder open' };
+        }
+        const root = folders[0].uri;
+        switch (check.type) {
+            case 'fileExists': {
+                if (!check.path) {
+                    return { label: check.label, passed: false, detail: 'No path specified' };
+                }
+                const files = await vscode.workspace.findFiles(check.path, null, 1);
+                return { label: check.label, passed: files.length > 0 };
+            }
+            case 'fileContains': {
+                if (!check.path || !check.pattern) {
+                    return { label: check.label, passed: false, detail: 'Missing path or pattern' };
+                }
+                const files = await vscode.workspace.findFiles(check.path, null, 1);
+                if (files.length === 0) {
+                    return { label: check.label, passed: false, detail: 'File not found' };
+                }
+                try {
+                    const content = await vscode.workspace.fs.readFile(files[0]);
+                    const text = Buffer.from(content).toString('utf-8');
+                    const regex = new RegExp(check.pattern, 'i');
+                    return { label: check.label, passed: regex.test(text) };
+                }
+                catch {
+                    return { label: check.label, passed: false, detail: 'Could not read file' };
+                }
+            }
+            case 'commandOutput': {
+                if (!check.command) {
+                    return { label: check.label, passed: false, detail: 'No command specified' };
+                }
+                return new Promise((resolve) => {
+                    const child = cp.spawn(check.command, [], {
+                        shell: true,
+                        cwd: root.fsPath,
+                        timeout: 60000,
+                        stdio: ['ignore', 'pipe', 'pipe']
+                    });
+                    let stderr = '';
+                    child.stderr.on('data', (chunk) => { stderr += chunk; });
+                    child.on('close', (code) => {
+                        resolve({ label: check.label, passed: code === 0, detail: code !== 0 ? stderr.slice(0, 200) : undefined });
+                    });
+                    child.on('error', (err) => {
+                        resolve({ label: check.label, passed: false, detail: err.message });
+                    });
+                });
+            }
+            default:
+                return { label: check.label, passed: false, detail: 'Unknown validation type' };
+        }
     }
     async onBrowserMessage(msg) {
         this.log.info(`[LabController] onBrowserMessage: type=${msg.type}`);
