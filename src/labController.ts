@@ -88,7 +88,7 @@ export class LabController {
       { location: vscode.ProgressLocation.Notification, title: 'Loading lab…' },
       async () => {
         this.log.info(`[startLabFromUri] Fetching JSON from ${labUrl}`);
-        const labJson = await this.fetchJson(labUrl);
+        const labJson = await this.fetchJsonWithRetry(labUrl);
         if (!labJson) {
           this.log.error(`[startLabFromUri] FAILED to fetch lab from ${labUrl}`);
           vscode.window.showErrorMessage(`Could not load lab from ${labUrl}`);
@@ -314,7 +314,20 @@ export class LabController {
     this.log.info('[LabController] Cleanup complete ✓');
   }
 
-  // ── Fetch JSON from a URL ─────────────────────────────────────
+  // ── Fetch JSON from a URL (with retry) ───────────────────────
+  private async fetchJsonWithRetry(url: string, retries = 3): Promise<unknown | null> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      const result = await this.fetchJson(url);
+      if (result !== null) { return result; }
+      if (attempt < retries) {
+        const delay = 1000 * Math.pow(2, attempt - 1); // 1 s, 2 s (for default 3 attempts)
+        this.log.warn(`[fetchJsonWithRetry] Attempt ${attempt} failed — retrying in ${delay} ms`);
+        await new Promise<void>(resolve => setTimeout(resolve, delay));
+      }
+    }
+    return null;
+  }
+
   private fetchJson(url: string): Promise<unknown | null> {
     return new Promise((resolve) => {
       const client = url.startsWith('https') ? https : http;
@@ -353,6 +366,11 @@ export class LabController {
   private async onSlideChanged(slide: number) {
     if (!this.lab || !this.guidePanel) { return; }
 
+    if (!Number.isInteger(slide) || slide < 1) {
+      this.log.warn(`[onSlideChanged] Ignoring invalid slide number: ${slide}`);
+      return;
+    }
+
     // Run step-level onLeave for the current step before leaving the slide
     await this.runStepOnLeave();
 
@@ -387,53 +405,68 @@ export class LabController {
   private async showCurrentStep() {
     if (!this.lab || !this.guidePanel) { return; }
 
-    const entry = this.currentEntry();
+    try {
+      const entry = this.currentEntry();
 
-    if (!entry || entry.steps.length === 0) {
-      // No lab content for this slide — point to the slides and let them drive
-      this.statusBarItem.text = `$(book) Slide ${this.currentSlide}`;
+      if (!entry || entry.steps.length === 0) {
+        // No lab content for this slide — point to the slides and let them drive
+        this.statusBarItem.text = `$(book) Slide ${this.currentSlide}`;
+        this.guidePanel.postMessage({
+          type: 'setState',
+          step: {
+            title: 'Follow Along',
+            instruction: 'Review the content on the current slide. When you\'re ready, advance to the next slide.',
+            focus: 'left',
+            focusLabel: { left: 'Advance the slides' },
+            index: 0,
+            total: 1,
+            slide: this.currentSlide
+          }
+        });
+        this.updateExtraStepsFlag();
+        return;
+      }
+
+      const step = entry.steps[this.currentSubStep];
+      const total = entry.steps.length;
+      this.statusBarItem.text = `$(book) Slide ${this.currentSlide} — Step ${this.currentSubStep + 1}/${total} — ${step.title}`;
+
+      const showTips = vscode.workspace.getConfiguration('labGuide').get<boolean>('showTips', true);
+
       this.guidePanel.postMessage({
         type: 'setState',
         step: {
-          title: 'Follow Along',
-          instruction: 'Review the content on the current slide. When you\'re ready, advance to the next slide.',
-          focus: 'left',
-          focusLabel: { left: 'Advance the slides' },
+          ...step,
+          tip: showTips ? step.tip : undefined,
+          index: this.currentSubStep,
+          total,
+          slide: this.currentSlide
+        }
+      });
+
+      this.updateExtraStepsFlag();
+
+      // Execute step action(s), then re-focus the guide panel
+      if (step.action) {
+        const actions = Array.isArray(step.action) ? step.action : [step.action];
+        for (const cmd of actions) {
+          await this.executeAction(cmd);
+        }
+        setTimeout(() => this.guidePanel?.reveal(), 300);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.log.error(`[showCurrentStep] Unexpected error: ${msg}`);
+      this.guidePanel?.postMessage({
+        type: 'setState',
+        step: {
+          title: 'Error',
+          instruction: 'An error occurred while loading this step. Please try resetting the lab.',
           index: 0,
           total: 1,
           slide: this.currentSlide
         }
       });
-      this.updateExtraStepsFlag();
-      return;
-    }
-
-    const step = entry.steps[this.currentSubStep];
-    const total = entry.steps.length;
-    this.statusBarItem.text = `$(book) Slide ${this.currentSlide} — Step ${this.currentSubStep + 1}/${total} — ${step.title}`;
-
-    const showTips = vscode.workspace.getConfiguration('labGuide').get<boolean>('showTips', true);
-
-    this.guidePanel.postMessage({
-      type: 'setState',
-      step: {
-        ...step,
-        tip: showTips ? step.tip : undefined,
-        index: this.currentSubStep,
-        total,
-        slide: this.currentSlide
-      }
-    });
-
-    this.updateExtraStepsFlag();
-
-    // Execute step action(s), then re-focus the guide panel
-    if (step.action) {
-      const actions = Array.isArray(step.action) ? step.action : [step.action];
-      for (const cmd of actions) {
-        await this.executeAction(cmd);
-      }
-      setTimeout(() => this.guidePanel?.reveal(), 300);
     }
   }
 
