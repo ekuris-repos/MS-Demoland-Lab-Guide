@@ -18,6 +18,9 @@
   var prevBtn         = document.getElementById('prevBtn');
   var nextBtn         = document.getElementById('nextBtn');
   var actionBtn       = document.getElementById('actionBtn');
+  var stepValidation  = document.getElementById('stepValidation');
+  var validateBtn     = document.getElementById('validateBtn');
+  var validationResults = document.getElementById('validationResults');
 
   /* Arrow / glow elements */
   var arrowLeft       = document.getElementById('arrowLeft');
@@ -98,6 +101,16 @@
       void nextBtn.offsetWidth;
       nextBtn.classList.add('step-btn--glow');
     }
+    if (msg.type === 'validationRunning') {
+      validateBtn.disabled = true;
+      validateBtn.textContent = 'Checking…';
+      validationResults.innerHTML = '';
+    }
+    if (msg.type === 'validationResults') {
+      validateBtn.disabled = false;
+      validateBtn.textContent = 'Check Mission Progress';
+      renderValidationResults(msg.results);
+    }
     if (msg.type === 'setSettings') {
       if (msg.reduceMotion) {
         document.body.setAttribute('data-reduce-motion', '');
@@ -124,6 +137,10 @@
 
   actionBtn.addEventListener('click', function () {
     vscode.postMessage({ type: 'replayAction' });
+  });
+
+  validateBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'runValidation' });
   });
 
   /* ---- Copy-to-clipboard SVG icons ---- */
@@ -159,6 +176,38 @@
       })(btn, text);
       kbd.parentNode.insertBefore(btn, kbd.nextSibling);
     }
+  }
+
+  /* ---- Render validation results ---- */
+  function renderValidationResults(results) {
+    validationResults.innerHTML = '';
+    var allPassed = true;
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      var row = document.createElement('div');
+      row.className = 'validation-row ' + (r.passed ? 'validation-row--pass' : 'validation-row--fail');
+      var icon = document.createElement('span');
+      icon.className = 'validation-icon';
+      icon.textContent = r.passed ? '\u2713' : '\u2717';
+      row.appendChild(icon);
+      var label = document.createElement('span');
+      label.className = 'validation-label';
+      label.textContent = r.label;
+      row.appendChild(label);
+      if (r.detail && !r.passed) {
+        var detail = document.createElement('span');
+        detail.className = 'validation-detail';
+        detail.textContent = r.detail;
+        row.appendChild(detail);
+      }
+      validationResults.appendChild(row);
+      if (!r.passed) { allPassed = false; }
+    }
+    // Summary line
+    var summary = document.createElement('div');
+    summary.className = 'validation-summary ' + (allPassed ? 'validation-summary--pass' : 'validation-summary--fail');
+    summary.textContent = allPassed ? 'All checks passed!' : 'Some checks did not pass yet. Keep working!';
+    validationResults.appendChild(summary);
   }
 
   /* ---- Render a step ---- */
@@ -201,6 +250,17 @@
       nextBtn.style.display = '';
       prevBtn.disabled = step.index === 0;
       nextBtn.disabled = step.index === step.total - 1;
+    }
+
+    // Validation section
+    if (step.validate && step.validate.length > 0) {
+      stepValidation.style.display = '';
+      validateBtn.disabled = false;
+      validateBtn.textContent = 'Check Mission Progress';
+      validationResults.innerHTML = '';
+    } else {
+      stepValidation.style.display = 'none';
+      validationResults.innerHTML = '';
     }
 
     // Focus zone — empty or absent means no arrows (self-focus)

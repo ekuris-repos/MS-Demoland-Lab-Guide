@@ -97,6 +97,65 @@ async function fetchProfileTemplate() {
         return null;
     }
 }
+/** Check whether the Lab Guide profile already exists in VS Code's storage. */
+function profileExists() {
+    const storageFile = (0, path_1.join)(userDataRoot(), 'globalStorage', 'storage.json');
+    if (!(0, fs_1.existsSync)(storageFile)) {
+        return false;
+    }
+    try {
+        const storage = JSON.parse((0, fs_1.readFileSync)(storageFile, 'utf-8'));
+        const profiles = storage.userDataProfiles ?? [];
+        return profiles.some(p => p.name === PROFILE_NAME);
+    }
+    catch {
+        return false;
+    }
+}
+/** Open a new VS Code window in the existing Lab Guide profile. */
+function switchToProfile() {
+    const cli = vscodeCli();
+    log.info('Switching to existing Lab Guide profile…');
+    const child = (0, child_process_1.spawn)(`"${cli}" --profile "${PROFILE_NAME}"`, {
+        shell: true, detached: true, stdio: 'ignore'
+    });
+    child.unref();
+}
+/**
+ * Remove the Lab Guide profile from VS Code's storage and delete its
+ * settings directory. Returns true if the profile was found and removed.
+ */
+function removeProfile() {
+    const root = userDataRoot();
+    const storageFile = (0, path_1.join)(root, 'globalStorage', 'storage.json');
+    if (!(0, fs_1.existsSync)(storageFile)) {
+        return false;
+    }
+    try {
+        const storage = JSON.parse((0, fs_1.readFileSync)(storageFile, 'utf-8'));
+        const profiles = storage.userDataProfiles ?? [];
+        const idx = profiles.findIndex(p => p.name === PROFILE_NAME);
+        if (idx === -1) {
+            return false;
+        }
+        const location = profiles[idx].location;
+        profiles.splice(idx, 1);
+        storage.userDataProfiles = profiles;
+        (0, fs_1.writeFileSync)(storageFile, JSON.stringify(storage, null, 2), 'utf-8');
+        log.info(`Removed "${PROFILE_NAME}" entry from storage.json`);
+        // Delete the profile's settings directory
+        const profileDir = (0, path_1.join)(root, 'profiles', location);
+        if ((0, fs_1.existsSync)(profileDir)) {
+            (0, fs_1.rmSync)(profileDir, { recursive: true, force: true });
+            log.info(`Deleted profile directory: ${profileDir}`);
+        }
+        return true;
+    }
+    catch (e) {
+        log.error(`Failed to remove profile: ${e.message}`);
+        return false;
+    }
+}
 /** Write settings.json into the profile directory (idempotent). */
 function writeProfileSettings(template) {
     const root = userDataRoot();
@@ -173,28 +232,72 @@ async function activate(context) {
     // ── Profile gate ──────────────────────────────────────────────
     const profileActive = vscode.workspace.getConfiguration('labGuide')
         .get('profileActive', false);
+    // ── Commands available outside the profile ────────────────────
+    context.subscriptions.push(vscode.commands.registerCommand('labGuide.runProfiler', async () => {
+        log.info('Command: runProfiler');
+        const template = await fetchProfileTemplate();
+        if (template) {
+            openInProfile(template);
+        }
+        else {
+            vscode.window.showErrorMessage('Failed to download the Lab Guide profile. Check the Lab Guide output channel for details.');
+        }
+    }), vscode.commands.registerCommand('labGuide.removeProfile', () => {
+        log.info('Command: removeProfile');
+        if (removeProfile()) {
+            vscode.window.showInformationMessage('Lab Guide profile removed.');
+        }
+        else {
+            vscode.window.showWarningMessage('No Lab Guide profile found to remove.');
+        }
+    }));
     if (!profileActive) {
         log.info('labGuide.profileActive is false — not in Lab Guide profile');
-        vscode.window.showInformationMessage('Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.', 'Create Profile').then(async (choice) => {
-            if (choice !== 'Create Profile') {
-                return;
-            }
-            const template = await fetchProfileTemplate();
-            if (template) {
-                openInProfile(template);
+        const exists = profileExists();
+        const firstLaunch = !context.globalState.get('launched');
+        context.subscriptions.push(vscode.commands.registerCommand('labGuide.switchToProfile', () => {
+            log.info('Command: switchToProfile');
+            switchToProfile();
+        }));
+        // Status bar — subtle, non-intrusive reminder that Lab Guide is available
+        const statusBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 0);
+        statusBtn.text = '$(beaker) Lab Guide';
+        statusBtn.tooltip = exists
+            ? 'Switch to the Lab Guide profile'
+            : 'Create the Lab Guide profile';
+        statusBtn.command = exists ? 'labGuide.switchToProfile' : 'labGuide.runProfiler';
+        statusBtn.show();
+        context.subscriptions.push(statusBtn);
+        if (firstLaunch) {
+            // First activation after install — auto-launch into the profile
+            await context.globalState.update('launched', true);
+            log.info('First activation — auto-launching into profile');
+            if (exists) {
+                log.info('Profile exists — switching to it');
+                switchToProfile();
             }
             else {
-                vscode.window.showErrorMessage('Failed to download the Lab Guide profile. Check the Lab Guide output channel for details.');
+                vscode.window.showInformationMessage('Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.', 'Create Profile').then(async (choice) => {
+                    if (choice !== 'Create Profile') {
+                        return;
+                    }
+                    vscode.commands.executeCommand('labGuide.runProfiler');
+                });
             }
-        });
+        }
+        else {
+            // Subsequent launches — status bar is enough, don't nag
+            log.info('Returning user — status bar only, no auto-launch');
+        }
         return;
     }
     log.info('Running inside Lab Guide profile ✓');
-    // ── Welcome toast (first run in correct profile) ──────────────
+    // ── Welcome walkthrough (first run in correct profile) ─────────
     const welcomed = context.globalState.get('welcomed');
     if (!welcomed) {
         await context.globalState.update('welcomed', true);
-        vscode.window.showInformationMessage('Welcome to the GitHub Copilot Training Lab! Choose a course from the catalog to begin an interactive session.', 'Dismiss');
+        vscode.commands.executeCommand('workbench.action.openWalkthrough', 'ms-demoland.lab-guide#labGuide.welcome', true // open to the side
+        );
     }
     controller = new labController_1.LabController(context, log);
     log.info('LabController created');
@@ -217,27 +320,50 @@ async function activate(context) {
     }), vscode.commands.registerCommand('labGuide.openSettings', () => {
         log.info('Command: openSettings');
         vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ms-demoland.lab-guide');
+    }), vscode.commands.registerCommand('labGuide.openCatalog', async () => {
+        log.info('Command: openCatalog');
+        const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl');
+        if (!catalogUrl) {
+            vscode.window.showWarningMessage('No catalog URL configured.');
+            return;
+        }
+        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+        await vscode.commands.executeCommand('workbench.action.closeSidebar');
+        await vscode.commands.executeCommand('workbench.action.closePanel');
+        await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+        controller.openCatalog(catalogUrl);
+    }), vscode.commands.registerCommand('labGuide.openWalkthrough', () => {
+        log.info('Command: openWalkthrough');
+        vscode.commands.executeCommand('workbench.action.openWalkthrough', 'ms-demoland.lab-guide#labGuide.welcome', true);
     }));
     log.info('Commands registered');
     // ── Auto-open catalog on startup ──────────────────────────────
-    const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl');
-    log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
-    if (catalogUrl) {
-        log.info('Cleaning up previous workspace state');
-        // Close all editor tabs
-        vscode.commands.executeCommand('workbench.action.closeAllEditors').then(async () => {
-            // Close sidebar (Extensions pane, Explorer, etc.)
-            await vscode.commands.executeCommand('workbench.action.closeSidebar');
-            // Close panel area (Terminal, Output, Problems, etc.)
-            await vscode.commands.executeCommand('workbench.action.closePanel');
-            // Close auxiliary bar (Copilot Chat secondary sidebar)
-            await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
-            log.info(`Opening catalog → ${catalogUrl}`);
-            controller.openCatalog(catalogUrl);
-        }, (err) => log.error(`Workspace cleanup failed: ${err}`));
+    const activeLab = context.globalState.get('activeLab');
+    if (activeLab) {
+        // A lab was in progress (e.g. window reloaded after cloning) — restore it
+        log.info(`Restoring active lab: server="${activeLab.server}", course="${activeLab.course}"`);
+        controller.startLabFromUri(activeLab.server, activeLab.course);
     }
     else {
-        log.warn('No catalogUrl configured — skipping auto-open');
+        const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl');
+        log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
+        if (catalogUrl) {
+            log.info('Cleaning up previous workspace state');
+            // Close all editor tabs
+            vscode.commands.executeCommand('workbench.action.closeAllEditors').then(async () => {
+                // Close sidebar (Extensions pane, Explorer, etc.)
+                await vscode.commands.executeCommand('workbench.action.closeSidebar');
+                // Close panel area (Terminal, Output, Problems, etc.)
+                await vscode.commands.executeCommand('workbench.action.closePanel');
+                // Close auxiliary bar (Copilot Chat secondary sidebar)
+                await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+                log.info(`Opening catalog → ${catalogUrl}`);
+                controller.openCatalog(catalogUrl);
+            }, (err) => log.error(`Workspace cleanup failed: ${err}`));
+        }
+        else {
+            log.warn('No catalogUrl configured — skipping auto-open');
+        }
     }
     // ── URI handler ───────────────────────────────────────────────
     context.subscriptions.push(vscode.window.registerUriHandler({
@@ -285,4 +411,5 @@ function deactivate() {
     log.info('Lab Guide extension deactivating…');
     controller?.dispose();
 }
+// Demo change for screenshot capture
 //# sourceMappingURL=extension.js.map

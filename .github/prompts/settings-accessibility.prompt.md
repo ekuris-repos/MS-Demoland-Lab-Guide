@@ -1,9 +1,3 @@
----
-status: complete
-implemented: v0.6.2
-date: 2025-06-14
----
-
 # Settings Button + Accessibility — Agent Prompt
 
 ## Task
