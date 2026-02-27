@@ -290,13 +290,14 @@ export async function activate(context: vscode.ExtensionContext) {
   }
   log.info('Running inside Lab Guide profile ✓');
 
-  // ── Welcome toast (first run in correct profile) ──────────────
+  // ── Welcome walkthrough (first run in correct profile) ─────────
   const welcomed = context.globalState.get<boolean>('welcomed');
   if (!welcomed) {
     await context.globalState.update('welcomed', true);
-    vscode.window.showInformationMessage(
-      'Welcome to the GitHub Copilot Training Lab! Choose a course from the catalog to begin an interactive session.',
-      'Dismiss'
+    vscode.commands.executeCommand(
+      'workbench.action.openWalkthrough',
+      'ms-demoland.lab-guide#labGuide.welcome',
+      true  // open to the side
     );
   }
 
