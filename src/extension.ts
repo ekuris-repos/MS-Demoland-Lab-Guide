@@ -37,8 +37,15 @@ function fetchProfile(url: string): Promise<ProfileTemplate> {
         res.resume();
         return;
       }
+      const maxSize = 1024 * 1024; // 1 MB
       let data = '';
-      res.on('data', chunk => { data += chunk; });
+      res.on('data', chunk => {
+        data += chunk;
+        if (data.length > maxSize) {
+          reject(new Error('Profile response too large'));
+          res.destroy();
+        }
+      });
       res.on('end', () => {
         try { resolve(JSON.parse(data)); }
         catch (e) { reject(e); }

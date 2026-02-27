@@ -287,7 +287,7 @@ export class BrowserPanel {
 <script nonce="${nonce}">
 (function() {
   var vscode = acquireVsCodeApi();
-  console.log('[Catalog] Handler injected, base=${base}');
+  console.log('[Catalog] Handler injected, base=' + ${JSON.stringify(base)});
 
   // Replace setup button — we're already in VS Code
   var setupBtn = document.getElementById('setupBtn');
@@ -345,14 +345,27 @@ export class BrowserPanel {
     return modified;
   }
 
-  private fetchText(url: string): Promise<string | null> {
+  private fetchText(url: string, allowedOrigin?: string): Promise<string | null> {
     return new Promise((resolve) => {
       const client = url.startsWith('https') ? https : http;
+      const origin = allowedOrigin ?? new URL(url).origin;
       const req = client.get(url, { timeout: 10000 }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          this.log.info(`[BrowserPanel] Following redirect → ${res.headers.location}`);
           res.resume();
-          this.fetchText(res.headers.location).then(resolve);
+          try {
+            const redirectOrigin = new URL(res.headers.location).origin;
+            if (redirectOrigin !== origin) {
+              this.log.warn(`[BrowserPanel] Blocked cross-origin redirect → ${res.headers.location}`);
+              resolve(null);
+              return;
+            }
+          } catch {
+            this.log.warn(`[BrowserPanel] Blocked invalid redirect URL`);
+            resolve(null);
+            return;
+          }
+          this.log.info(`[BrowserPanel] Following redirect → ${res.headers.location}`);
+          this.fetchText(res.headers.location, origin).then(resolve);
           return;
         }
         if (res.statusCode !== 200) {
@@ -361,8 +374,16 @@ export class BrowserPanel {
           resolve(null);
           return;
         }
+        const maxSize = 2 * 1024 * 1024; // 2 MB
         let data = '';
-        res.on('data', (chunk: Buffer) => { data += chunk; });
+        res.on('data', (chunk: Buffer) => {
+          data += chunk;
+          if (data.length > maxSize) {
+            this.log.warn('[BrowserPanel] Response exceeded 2 MB limit');
+            res.destroy();
+            resolve(null);
+          }
+        });
         res.on('end', () => resolve(data));
       });
       req.on('error', (e: Error) => { this.log.error(`[BrowserPanel] fetchText error: ${e.message}`); resolve(null); });

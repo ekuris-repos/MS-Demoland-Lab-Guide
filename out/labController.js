@@ -266,7 +266,7 @@ class LabController {
             child.on('close', (code) => {
                 if (code !== 0) {
                     this.log.error(`[cloneRepo] ✗ exit code ${code}`);
-                    this.log.error(`[cloneRepo] stderr: ${stderr}`);
+                    this.log.error(`[cloneRepo] stderr: ${stderr.slice(0, 500)}`);
                     vscode.window.showErrorMessage(`Failed to clone lab repo (exit ${code})`);
                     resolve();
                     return;
@@ -310,8 +310,16 @@ class LabController {
                     resolve(null);
                     return;
                 }
+                const maxSize = 2 * 1024 * 1024; // 2 MB
                 let data = '';
-                res.on('data', chunk => { data += chunk; });
+                res.on('data', chunk => {
+                    data += chunk;
+                    if (data.length > maxSize) {
+                        this.log.warn('[fetchJson] Response exceeded 2 MB limit');
+                        res.destroy();
+                        resolve(null);
+                    }
+                });
                 res.on('end', () => {
                     try {
                         resolve(JSON.parse(data));
