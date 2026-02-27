@@ -169,12 +169,9 @@ class BrowserPanel {
       }
 
       // Apply initial notes setting on iframe load
-      // slides.js defaults notes ON, so only toggle if we want them OFF
-      if (!notesOn) {
-        iframe.addEventListener('load', function() {
-          iframe.contentWindow.postMessage({ type: 'toggleNotes' }, '*');
-        });
-      }
+      iframe.addEventListener('load', function() {
+        iframe.contentWindow.postMessage({ type: 'setNotes', visible: notesOn }, '*');
+      });
 
       // Listen for init message from slides.js (total count)
       window.addEventListener('message', function(e) {
