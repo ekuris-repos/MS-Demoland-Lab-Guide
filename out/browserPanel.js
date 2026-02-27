@@ -84,7 +84,7 @@ class BrowserPanel {
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; frame-src https: http:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+    content="default-src 'none'; frame-src https:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <style nonce="${nonce}">
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; display: flex; flex-direction: column; background: #0d1117; }

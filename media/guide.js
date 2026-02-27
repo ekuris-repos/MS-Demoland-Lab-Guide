@@ -39,6 +39,30 @@
   var pendingFocus = null;
   var chaseEdges = [edgeTop, edgeRight, edgeBottom, edgeLeft];
 
+  /* ---- HTML sanitiser (allowlist) ---- */
+  var ALLOWED_TAGS = /^(br|code|em|kbd|strong)$/i;
+  function sanitizeHTML(raw) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = raw;
+    (function walk(parent) {
+      var child = parent.firstChild;
+      while (child) {
+        var next = child.nextSibling;
+        if (child.nodeType === 1) {
+          if (!ALLOWED_TAGS.test(child.tagName)) {
+            while (child.firstChild) { parent.insertBefore(child.firstChild, child); }
+            parent.removeChild(child);
+          } else {
+            while (child.attributes.length) { child.removeAttribute(child.attributes[0].name); }
+            walk(child);
+          }
+        }
+        child = next;
+      }
+    })(tmp);
+    return tmp.innerHTML;
+  }
+
   /* ---- Focus zone → UI mapping ---- */
   var focusMap = {
     left:   { arrows: ['left'],  edges: ['left']   },
@@ -146,7 +170,7 @@
       stepBadge.textContent = 'Slide ' + (step.slide || '?');
     }
     stepTitle.textContent = step.title;
-    stepInstruction.innerHTML = step.instruction || '';
+    stepInstruction.innerHTML = sanitizeHTML(step.instruction || '');
 
     // Add copy-to-clipboard buttons to <kbd> blocks
     addCopyButtons();
@@ -161,7 +185,7 @@
 
     // Optional tip
     if (step.tip) {
-      stepTip.innerHTML = step.tip;
+      stepTip.innerHTML = sanitizeHTML(step.tip);
       stepTip.classList.add('step-tip--visible');
     } else {
       stepTip.innerHTML = '';

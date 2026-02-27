@@ -58,10 +58,28 @@ export class LabController {
     await this.browserPanel.showCatalog(url);
   }
 
+  /** Check that a server URL matches the configured catalog origin. */
+  private isAllowedOrigin(serverUrl: string): boolean {
+    const catalogUrl = vscode.workspace.getConfiguration('labGuide').get<string>('catalogUrl', '');
+    try {
+      const allowed = new URL(catalogUrl);
+      const candidate = new URL(serverUrl);
+      return candidate.protocol === 'https:' && candidate.origin === allowed.origin;
+    } catch {
+      return false;
+    }
+  }
+
   // ── Start lab via URI handler ──────────────────────────────────
   async startLabFromUri(server: string, coursePath: string) {
     server = server.replace(/\/+$/, '');
     coursePath = coursePath.replace(/^\/+|\/+$/g, '');
+
+    if (!this.isAllowedOrigin(server)) {
+      this.log.warn(`[startLabFromUri] Blocked — server origin not allowed: ${server}`);
+      vscode.window.showErrorMessage('Lab Guide: server URL does not match the configured catalog origin.');
+      return;
+    }
 
     const labUrl = `${server}/${coursePath}/lab.json`;
     this.log.info(`Fetching lab → ${labUrl}`);
@@ -248,22 +266,29 @@ export class LabController {
     this.log.info(`[cloneRepo] Cloning ${repoUrl} → ${targetDir}`);
 
     return new Promise<void>((resolve) => {
-      cp.exec(
-        `git clone --depth 1 "${repoUrl}" "${targetDir}"`,
-        { timeout: 60_000 },
-        (err, _stdout, stderr) => {
-          if (err) {
-            this.log.error(`[cloneRepo] ✗ ${err.message}`);
-            this.log.error(`[cloneRepo] stderr: ${stderr}`);
-            vscode.window.showErrorMessage(`Failed to clone lab repo: ${err.message}`);
-            resolve();
-            return;
-          }
-          this.log.info(`[cloneRepo] ✓ Cloned successfully`);
-          vscode.workspace.updateWorkspaceFolders(0, 0, { uri: targetUri, name: repoName });
+      const child = cp.spawn('git', ['clone', '--depth', '1', repoUrl, targetDir], {
+        timeout: 60_000,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk; });
+      child.on('close', (code) => {
+        if (code !== 0) {
+          this.log.error(`[cloneRepo] ✗ exit code ${code}`);
+          this.log.error(`[cloneRepo] stderr: ${stderr}`);
+          vscode.window.showErrorMessage(`Failed to clone lab repo (exit ${code})`);
           resolve();
+          return;
         }
-      );
+        this.log.info(`[cloneRepo] ✓ Cloned successfully`);
+        vscode.workspace.updateWorkspaceFolders(0, 0, { uri: targetUri, name: repoName });
+        resolve();
+      });
+      child.on('error', (err) => {
+        this.log.error(`[cloneRepo] ✗ ${err.message}`);
+        vscode.window.showErrorMessage(`Failed to clone lab repo: ${err.message}`);
+        resolve();
+      });
     });
   }
 

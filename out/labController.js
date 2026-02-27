@@ -59,10 +59,27 @@ class LabController {
         this.log.info(`openCatalog → ${url}`);
         await this.browserPanel.showCatalog(url);
     }
+    /** Check that a server URL matches the configured catalog origin. */
+    isAllowedOrigin(serverUrl) {
+        const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl', '');
+        try {
+            const allowed = new URL(catalogUrl);
+            const candidate = new URL(serverUrl);
+            return candidate.protocol === 'https:' && candidate.origin === allowed.origin;
+        }
+        catch {
+            return false;
+        }
+    }
     // ── Start lab via URI handler ──────────────────────────────────
     async startLabFromUri(server, coursePath) {
         server = server.replace(/\/+$/, '');
         coursePath = coursePath.replace(/^\/+|\/+$/g, '');
+        if (!this.isAllowedOrigin(server)) {
+            this.log.warn(`[startLabFromUri] Blocked — server origin not allowed: ${server}`);
+            vscode.window.showErrorMessage('Lab Guide: server URL does not match the configured catalog origin.');
+            return;
+        }
         const labUrl = `${server}/${coursePath}/lab.json`;
         this.log.info(`Fetching lab → ${labUrl}`);
         vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Loading lab…' }, async () => {
@@ -152,21 +169,45 @@ class LabController {
         this.openCatalog(server.replace(/\/+$/, '') + '/');
     }
     /** Move to next sub-step within the current slide. */
-    nextStep() {
+    async nextStep() {
         const entry = this.currentEntry();
         if (!entry) {
             return;
         }
         if (this.currentSubStep < entry.steps.length - 1) {
+            await this.runStepOnLeave();
             this.currentSubStep++;
             this.showCurrentStep();
         }
     }
     /** Move to previous sub-step within the current slide. */
-    prevStep() {
+    async prevStep() {
         if (this.currentSubStep > 0) {
+            await this.runStepOnLeave();
             this.currentSubStep--;
             this.showCurrentStep();
+        }
+    }
+    /** Run the current step's onLeave commands (if any). */
+    async runStepOnLeave() {
+        const entry = this.currentEntry();
+        if (!entry) {
+            return;
+        }
+        const step = entry.steps[this.currentSubStep];
+        if (!step?.onLeave) {
+            return;
+        }
+        const commands = Array.isArray(step.onLeave) ? step.onLeave : [step.onLeave];
+        for (const cmd of commands) {
+            this.log.info(`[onLeave:step] Slide ${this.currentSlide} step ${this.currentSubStep} → ${cmd}`);
+            try {
+                await vscode.commands.executeCommand(cmd);
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                this.log.error(`[onLeave:step] ✗ ${cmd}: ${msg}`);
+            }
         }
     }
     reset() {
@@ -216,16 +257,27 @@ class LabController {
         }
         this.log.info(`[cloneRepo] Cloning ${repoUrl} → ${targetDir}`);
         return new Promise((resolve) => {
-            cp.exec(`git clone --depth 1 "${repoUrl}" "${targetDir}"`, { timeout: 60000 }, (err, _stdout, stderr) => {
-                if (err) {
-                    this.log.error(`[cloneRepo] ✗ ${err.message}`);
+            const child = cp.spawn('git', ['clone', '--depth', '1', repoUrl, targetDir], {
+                timeout: 60000,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+            let stderr = '';
+            child.stderr.on('data', (chunk) => { stderr += chunk; });
+            child.on('close', (code) => {
+                if (code !== 0) {
+                    this.log.error(`[cloneRepo] ✗ exit code ${code}`);
                     this.log.error(`[cloneRepo] stderr: ${stderr}`);
-                    vscode.window.showErrorMessage(`Failed to clone lab repo: ${err.message}`);
+                    vscode.window.showErrorMessage(`Failed to clone lab repo (exit ${code})`);
                     resolve();
                     return;
                 }
                 this.log.info(`[cloneRepo] ✓ Cloned successfully`);
                 vscode.workspace.updateWorkspaceFolders(0, 0, { uri: targetUri, name: repoName });
+                resolve();
+            });
+            child.on('error', (err) => {
+                this.log.error(`[cloneRepo] ✗ ${err.message}`);
+                vscode.window.showErrorMessage(`Failed to clone lab repo: ${err.message}`);
                 resolve();
             });
         });
@@ -282,18 +334,20 @@ class LabController {
         if (!this.lab || !this.guidePanel) {
             return;
         }
-        // Run onLeave cleanup for the previous slide
+        // Run step-level onLeave for the current step before leaving the slide
+        await this.runStepOnLeave();
+        // Run slide-level onLeave cleanup for the previous slide
         const prevEntry = this.lab.slides[String(this.currentSlide)];
         if (prevEntry?.onLeave) {
             const commands = Array.isArray(prevEntry.onLeave) ? prevEntry.onLeave : [prevEntry.onLeave];
             for (const cmd of commands) {
-                this.log.info(`[onLeave] Slide ${this.currentSlide} → ${cmd}`);
+                this.log.info(`[onLeave:slide] Slide ${this.currentSlide} → ${cmd}`);
                 try {
                     await vscode.commands.executeCommand(cmd);
                 }
                 catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    this.log.error(`[onLeave] ✗ ${cmd}: ${msg}`);
+                    this.log.error(`[onLeave:slide] ✗ ${cmd}: ${msg}`);
                 }
             }
         }

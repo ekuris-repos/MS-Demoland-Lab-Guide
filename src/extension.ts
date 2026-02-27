@@ -261,6 +261,20 @@ export async function activate(context: vscode.ExtensionContext) {
           return;
         }
 
+        // Validate server is HTTPS
+        try {
+          const parsed = new URL(server);
+          if (parsed.protocol !== 'https:') {
+            log.warn(`Rejected non-HTTPS server URL: ${server}`);
+            vscode.window.showErrorMessage('Lab Guide: server URL must use HTTPS.');
+            return;
+          }
+        } catch {
+          log.warn(`Invalid server URL: ${server}`);
+          vscode.window.showErrorMessage('Lab Guide: invalid server URL.');
+          return;
+        }
+
         if (!course) {
           log.info('No course specified — opening catalog');
           controller!.openCatalog(server + '/');
