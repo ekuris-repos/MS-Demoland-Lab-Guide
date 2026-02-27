@@ -332,6 +332,9 @@ async function activate(context) {
         await vscode.commands.executeCommand('workbench.action.closePanel');
         await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
         controller.openCatalog(catalogUrl);
+    }), vscode.commands.registerCommand('labGuide.openWalkthrough', () => {
+        log.info('Command: openWalkthrough');
+        vscode.commands.executeCommand('workbench.action.openWalkthrough', 'ms-demoland.lab-guide#labGuide.welcome', true);
     }));
     log.info('Commands registered');
     // ── Auto-open catalog on startup ──────────────────────────────

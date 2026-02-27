@@ -2,7 +2,7 @@
   "name": "lab-guide",
   "displayName": "Lab Guide",
   "description": "Step-by-step lab guide panel with directional edge-glow arrows for hands-on training",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "publisher": "ms-demoland",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -63,6 +63,10 @@
       {
         "command": "labGuide.openCatalog",
         "title": "Lab Guide: Open Catalog"
+      },
+      {
+        "command": "labGuide.openWalkthrough",
+        "title": "Lab Guide: Open Walkthrough"
       }
     ],
     "menus": {
