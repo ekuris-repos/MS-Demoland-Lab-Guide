@@ -68,12 +68,17 @@
 
   /* ---- Focus zone → UI mapping ---- */
   var focusMap = {
-    left:   { arrows: ['left'],  edges: ['left']   },
-    right:  { arrows: ['right'], edges: ['right']  },
-    top:    { arrows: ['up'],    edges: ['top']    },
-    up:     { arrows: ['up'],    edges: ['top']    },
-    bottom: { arrows: ['down'],  edges: ['bottom'] },
-    down:   { arrows: ['down'],  edges: ['bottom'] }
+    left:     { arrows: ['left'],  edges: ['left']   },
+    slides:   { arrows: ['left'],  edges: ['left']   },
+    right:    { arrows: ['right'], edges: ['right']  },
+    chat:     { arrows: ['right'], edges: ['right']  },
+    top:      { arrows: ['up'],    edges: ['top']    },
+    up:       { arrows: ['up'],    edges: ['top']    },
+    editor:   { arrows: ['up'],    edges: ['top']    },
+    bottom:   { arrows: ['down'],  edges: ['bottom'] },
+    down:     { arrows: ['down'],  edges: ['bottom'] },
+    terminal: { arrows: ['down'],  edges: ['bottom'] },
+    guide:    { arrows: [],        edges: []         }
   };
 
   /* Direction → colour */
@@ -321,11 +326,43 @@
     });
 
     // Labels — clear all, then apply overrides from lab.json (focusLabel)
-    var labels = labelOverride || {};
+    var labels = normalizeLabels(zones, labelOverride);
     arrowLeftLabel.textContent  = labels.left  || '';
     arrowRightLabel.textContent = labels.right || '';
     arrowUpLabel.textContent    = labels.up    || '';
     arrowDownLabel.textContent  = labels.down  || '';
+  }
+
+  function normalizeLabels(zones, labelOverride) {
+    if (!labelOverride) {
+      return {};
+    }
+
+    if (typeof labelOverride === 'string') {
+      var normalized = {};
+      var firstZone = Array.isArray(zones) && zones.length ? zones[0] : null;
+      var mapping = firstZone ? focusMap[firstZone] : null;
+      if (!mapping || !mapping.arrows.length) {
+        return normalized;
+      }
+      mapping.arrows.forEach(function(arrow) {
+        normalized[arrow] = labelOverride;
+      });
+      return normalized;
+    }
+
+    var remapped = {};
+    Object.keys(labelOverride).forEach(function(key) {
+      var mapping = focusMap[key];
+      if (!mapping || !mapping.arrows.length) {
+        remapped[key] = labelOverride[key];
+        return;
+      }
+      mapping.arrows.forEach(function(arrow) {
+        remapped[arrow] = labelOverride[key];
+      });
+    });
+    return remapped;
   }
 
   function toggleActive(el, active) {

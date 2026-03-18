@@ -57,6 +57,7 @@ class LabController {
     // ── Open catalog in our browser panel ──────────────────────────
     async openCatalog(url) {
         this.log.info(`openCatalog → ${url}`);
+        this.activeCatalogOrigin = this.getOrigin(url);
         // Clear any active lab so re-activation doesn't restore it
         await this.context.globalState.update('activeLab', undefined);
         await this.browserPanel.showCatalog(url);
@@ -65,12 +66,26 @@ class LabController {
     isAllowedOrigin(serverUrl) {
         const catalogUrl = vscode.workspace.getConfiguration('labGuide').get('catalogUrl', '');
         try {
-            const allowed = new URL(catalogUrl);
             const candidate = new URL(serverUrl);
-            return candidate.protocol === 'https:' && candidate.origin === allowed.origin;
+            if (candidate.protocol !== 'https:') {
+                return false;
+            }
+            if (this.activeCatalogOrigin && candidate.origin === this.activeCatalogOrigin) {
+                return true;
+            }
+            const allowed = new URL(catalogUrl);
+            return candidate.origin === allowed.origin;
         }
         catch {
             return false;
+        }
+    }
+    getOrigin(url) {
+        try {
+            return new URL(url).origin;
+        }
+        catch {
+            return undefined;
         }
     }
     // ── Start lab via URI handler ──────────────────────────────────
@@ -222,6 +237,30 @@ class LabController {
         this.browserPanel.dispose();
         this.statusBarItem.dispose();
     }
+    async cleanupWorkbenchState() {
+        const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+        if (tabs.length > 0) {
+            try {
+                await vscode.window.tabGroups.close(tabs, true);
+            }
+            catch (err) {
+                this.log.warn(`[cleanup] Failed to close tabs via API: ${err}`);
+            }
+        }
+        const commands = [
+            'workbench.action.closeSidebar',
+            'workbench.action.closePanel',
+            'workbench.action.closeAuxiliaryBar'
+        ];
+        for (const command of commands) {
+            try {
+                await vscode.commands.executeCommand(command);
+            }
+            catch (err) {
+                this.log.warn(`[cleanup] Command failed: ${command} ${err}`);
+            }
+        }
+    }
     // ── Workspace folder management ───────────────────────────────
     /** Remove all workspace folders so the learner starts with a clean slate. */
     async closeAllWorkspaceFolders() {
@@ -231,10 +270,7 @@ class LabController {
             vscode.workspace.updateWorkspaceFolders(0, folders.length);
         }
         // Also close all editor tabs, sidebar, and panel
-        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-        await vscode.commands.executeCommand('workbench.action.closeSidebar');
-        await vscode.commands.executeCommand('workbench.action.closePanel');
-        await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+        await this.cleanupWorkbenchState();
         this.log.info('[init] Workspace cleaned ✓');
     }
     /** Clone a git repo into a temp directory and open it as the workspace folder. */
@@ -287,6 +323,7 @@ class LabController {
         this.currentSlide = 1;
         this.currentSubStep = 0;
         this.statusBarItem.hide();
+        await this.context.globalState.update('activeLab', undefined);
         // Close the guide panel
         this.guidePanel?.dispose();
         this.guidePanel = undefined;
@@ -296,6 +333,7 @@ class LabController {
             this.log.info(`[returnToCatalog] Removing ${folders.length} workspace folder(s)`);
             vscode.workspace.updateWorkspaceFolders(0, folders.length);
         }
+        await this.cleanupWorkbenchState();
         this.log.info('[LabController] Cleanup complete ✓');
     }
     // ── Fetch JSON from a URL ─────────────────────────────────────

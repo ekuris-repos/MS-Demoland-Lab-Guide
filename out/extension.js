@@ -43,6 +43,11 @@ const path_1 = require("path");
 const labController_1 = require("./labController");
 const PROFILE_NAME = 'Lab Guide';
 const EXTENSION_ID = 'ms-demoland.lab-guide';
+const REQUIRED_PROFILE_EXTENSIONS = [
+    EXTENSION_ID,
+    'GitHub.copilot',
+    'GitHub.copilot-chat'
+];
 const PROFILE_URL = 'https://ekuris-repos.github.io/MS-Demoland/lab-guide-profile.json';
 let controller;
 const log = vscode.window.createOutputChannel('Lab Guide', { log: true });
@@ -114,12 +119,8 @@ function profileExists() {
 }
 /** Open a new VS Code window in the existing Lab Guide profile. */
 function switchToProfile() {
-    const cli = vscodeCli();
     log.info('Switching to existing Lab Guide profile…');
-    const child = (0, child_process_1.spawn)(`"${cli}" --profile "${PROFILE_NAME}"`, {
-        shell: true, detached: true, stdio: 'ignore'
-    });
-    child.unref();
+    launchDetached(vscodeCli(), ['--new-window', '--profile', PROFILE_NAME]);
 }
 /**
  * Remove the Lab Guide profile from VS Code's storage and delete its
@@ -187,14 +188,57 @@ function vscodeCli() {
     const ext = process.platform === 'win32' ? '.cmd' : '';
     return (0, path_1.join)(exeDir, 'bin', cmd + ext);
 }
-/** Run a shell command and return the exit code as a promise. */
-function run(cmd) {
+/** Run a process and return the exit code as a promise. */
+function run(command, args) {
     return new Promise(resolve => {
-        log.info(`Running: ${cmd}`);
-        const child = (0, child_process_1.spawn)(cmd, { shell: true, stdio: 'ignore' });
+        log.info(`Running: ${command} ${args.join(' ')}`);
+        const child = (0, child_process_1.spawn)(command, args, {
+            stdio: 'ignore',
+            shell: process.platform === 'win32',
+        });
         child.on('close', code => resolve(code ?? 1));
-        child.on('error', () => resolve(1));
+        child.on('error', (err) => {
+            log.error(`Process launch failed: ${err.message}`);
+            resolve(1);
+        });
     });
+}
+function launchDetached(command, args) {
+    log.info(`Launching detached: ${command} ${args.join(' ')}`);
+    const child = (0, child_process_1.spawn)(command, args, {
+        detached: true,
+        stdio: 'ignore',
+        shell: process.platform === 'win32',
+        windowsHide: true,
+    });
+    child.on('error', (err) => {
+        log.error(`Detached launch failed: ${err.message}`);
+    });
+    child.unref();
+}
+async function cleanupWorkbenchState() {
+    const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+    if (tabs.length > 0) {
+        try {
+            await vscode.window.tabGroups.close(tabs, true);
+        }
+        catch (err) {
+            log.warn(`Failed to close tabs via API: ${err}`);
+        }
+    }
+    const commands = [
+        'workbench.action.closeSidebar',
+        'workbench.action.closePanel',
+        'workbench.action.closeAuxiliaryBar'
+    ];
+    for (const command of commands) {
+        try {
+            await vscode.commands.executeCommand(command);
+        }
+        catch (err) {
+            log.warn(`Workbench cleanup command failed: ${command} ${err}`);
+        }
+    }
 }
 /**
  * 4-phase profile setup:
@@ -207,22 +251,21 @@ async function openInProfile(template) {
     const cli = vscodeCli();
     // Phase 1: Create the profile (headless — just ensures it exists in storage.json)
     log.info('Phase 1: Creating profile…');
-    await run(`"${cli}" --profile "${PROFILE_NAME}" --list-extensions`);
-    // Phase 2: Install the extension into the profile
+    await run(cli, ['--profile', PROFILE_NAME, '--list-extensions']);
+    // Phase 2: Install the required extensions into the profile
     log.info('Phase 2: Installing extension…');
-    const installCode = await run(`"${cli}" --profile "${PROFILE_NAME}" --install-extension ${EXTENSION_ID}`);
-    if (installCode !== 0) {
-        log.warn(`Extension install exited with code ${installCode} (may not be published yet)`);
+    for (const extensionId of REQUIRED_PROFILE_EXTENSIONS) {
+        const installCode = await run(cli, ['--profile', PROFILE_NAME, '--install-extension', extensionId]);
+        if (installCode !== 0) {
+            log.warn(`Extension install exited with code ${installCode}: ${extensionId}`);
+        }
     }
     // Phase 3: Write settings.json so profileActive=true is picked up on launch
     log.info('Phase 3: Writing profile settings…');
     writeProfileSettings(template);
     // Phase 4: Open the window
     log.info('Phase 4: Opening profile window…');
-    const child = (0, child_process_1.spawn)(`"${cli}" --profile "${PROFILE_NAME}"`, {
-        shell: true, detached: true, stdio: 'ignore'
-    });
-    child.unref();
+    launchDetached(cli, ['--new-window', '--profile', PROFILE_NAME]);
 }
 async function activate(context) {
     log.info('Lab Guide extension activating…');
@@ -327,11 +370,8 @@ async function activate(context) {
             vscode.window.showWarningMessage('No catalog URL configured.');
             return;
         }
-        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-        await vscode.commands.executeCommand('workbench.action.closeSidebar');
-        await vscode.commands.executeCommand('workbench.action.closePanel');
-        await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
-        controller.openCatalog(catalogUrl);
+        await cleanupWorkbenchState();
+        await controller.openCatalog(catalogUrl);
     }), vscode.commands.registerCommand('labGuide.openWalkthrough', () => {
         log.info('Command: openWalkthrough');
         vscode.commands.executeCommand('workbench.action.openWalkthrough', 'ms-demoland.lab-guide#labGuide.welcome', true);
@@ -349,16 +389,9 @@ async function activate(context) {
         log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
         if (catalogUrl) {
             log.info('Cleaning up previous workspace state');
-            // Close all editor tabs
-            vscode.commands.executeCommand('workbench.action.closeAllEditors').then(async () => {
-                // Close sidebar (Extensions pane, Explorer, etc.)
-                await vscode.commands.executeCommand('workbench.action.closeSidebar');
-                // Close panel area (Terminal, Output, Problems, etc.)
-                await vscode.commands.executeCommand('workbench.action.closePanel');
-                // Close auxiliary bar (Copilot Chat secondary sidebar)
-                await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+            cleanupWorkbenchState().then(async () => {
                 log.info(`Opening catalog → ${catalogUrl}`);
-                controller.openCatalog(catalogUrl);
+                await controller.openCatalog(catalogUrl);
             }, (err) => log.error(`Workspace cleanup failed: ${err}`));
         }
         else {
