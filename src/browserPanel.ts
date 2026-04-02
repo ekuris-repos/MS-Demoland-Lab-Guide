@@ -145,11 +145,9 @@ export class BrowserPanel {
       }
 
       // Apply initial notes setting on iframe load
-      if (notesOn) {
-        iframe.addEventListener('load', function() {
-          iframe.contentWindow.postMessage({ type: 'toggleNotes' }, '*');
-        });
-      }
+      iframe.addEventListener('load', function() {
+        iframe.contentWindow.postMessage({ type: 'setNotes', visible: notesOn }, '*');
+      });
 
       // Listen for init message from slides.js (total count)
       window.addEventListener('message', function(e) {
@@ -238,6 +236,35 @@ export class BrowserPanel {
     this.panel?.dispose();
   }
 
+  private async closeNonCatalogTabs(): Promise<void> {
+    const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    const tabsToClose = vscode.window.tabGroups.all
+      .flatMap(group => group.tabs)
+      .filter(tab => tab !== activeTab);
+
+    if (tabsToClose.length > 0) {
+      try {
+        await vscode.window.tabGroups.close(tabsToClose, true);
+      } catch (err) {
+        this.log.warn(`[BrowserPanel] Failed to close non-catalog tabs: ${err}`);
+      }
+    }
+
+    const commands = [
+      'workbench.action.closeSidebar',
+      'workbench.action.closePanel',
+      'workbench.action.closeAuxiliaryBar'
+    ];
+
+    for (const command of commands) {
+      try {
+        await vscode.commands.executeCommand(command);
+      } catch (err) {
+        this.log.warn(`[BrowserPanel] Cleanup command failed: ${command} ${err}`);
+      }
+    }
+  }
+
   // ── Private helpers ───────────────────────────────────────────
 
   private ensurePanel() {
@@ -265,11 +292,10 @@ export class BrowserPanel {
         if (this.messageHandler) { await this.messageHandler(msg); }
         // Then navigate back to catalog
         this.log.info('[BrowserPanel] Returning to catalog');
-        this.showCatalog(this.catalogUrl);
+        await this.showCatalog(this.catalogUrl);
         // Reveal this panel and close any lingering editors in all groups
         this.panel!.reveal(vscode.ViewColumn.One);
-        await vscode.commands.executeCommand('workbench.action.closeEditorsInOtherGroups');
-        await vscode.commands.executeCommand('workbench.action.closeOtherEditors');
+        await this.closeNonCatalogTabs();
         return;
       }
       if (this.messageHandler) { this.messageHandler(msg); }

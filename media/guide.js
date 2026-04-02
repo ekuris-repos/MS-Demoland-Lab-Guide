@@ -18,6 +18,9 @@
   var prevBtn         = document.getElementById('prevBtn');
   var nextBtn         = document.getElementById('nextBtn');
   var actionBtn       = document.getElementById('actionBtn');
+  var stepValidation  = document.getElementById('stepValidation');
+  var validateBtn     = document.getElementById('validateBtn');
+  var validationResults = document.getElementById('validationResults');
 
   /* Arrow / glow elements */
   var arrowLeft       = document.getElementById('arrowLeft');
@@ -65,12 +68,17 @@
 
   /* ---- Focus zone → UI mapping ---- */
   var focusMap = {
-    left:   { arrows: ['left'],  edges: ['left']   },
-    right:  { arrows: ['right'], edges: ['right']  },
-    top:    { arrows: ['up'],    edges: ['top']    },
-    up:     { arrows: ['up'],    edges: ['top']    },
-    bottom: { arrows: ['down'],  edges: ['bottom'] },
-    down:   { arrows: ['down'],  edges: ['bottom'] }
+    left:     { arrows: ['left'],  edges: ['left']   },
+    slides:   { arrows: ['left'],  edges: ['left']   },
+    right:    { arrows: ['right'], edges: ['right']  },
+    chat:     { arrows: ['right'], edges: ['right']  },
+    top:      { arrows: ['up'],    edges: ['top']    },
+    up:       { arrows: ['up'],    edges: ['top']    },
+    editor:   { arrows: ['up'],    edges: ['top']    },
+    bottom:   { arrows: ['down'],  edges: ['bottom'] },
+    down:     { arrows: ['down'],  edges: ['bottom'] },
+    terminal: { arrows: ['down'],  edges: ['bottom'] },
+    guide:    { arrows: [],        edges: []         }
   };
 
   /* Direction → colour */
@@ -98,6 +106,16 @@
       void nextBtn.offsetWidth;
       nextBtn.classList.add('step-btn--glow');
     }
+    if (msg.type === 'validationRunning') {
+      validateBtn.disabled = true;
+      validateBtn.textContent = 'Checking…';
+      validationResults.innerHTML = '';
+    }
+    if (msg.type === 'validationResults') {
+      validateBtn.disabled = false;
+      validateBtn.textContent = 'Check Mission Progress';
+      renderValidationResults(msg.results);
+    }
     if (msg.type === 'setSettings') {
       if (msg.reduceMotion) {
         document.body.setAttribute('data-reduce-motion', '');
@@ -124,6 +142,10 @@
 
   actionBtn.addEventListener('click', function () {
     vscode.postMessage({ type: 'replayAction' });
+  });
+
+  validateBtn.addEventListener('click', function () {
+    vscode.postMessage({ type: 'runValidation' });
   });
 
   /* ---- Copy-to-clipboard SVG icons ---- */
@@ -159,6 +181,38 @@
       })(btn, text);
       kbd.parentNode.insertBefore(btn, kbd.nextSibling);
     }
+  }
+
+  /* ---- Render validation results ---- */
+  function renderValidationResults(results) {
+    validationResults.innerHTML = '';
+    var allPassed = true;
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      var row = document.createElement('div');
+      row.className = 'validation-row ' + (r.passed ? 'validation-row--pass' : 'validation-row--fail');
+      var icon = document.createElement('span');
+      icon.className = 'validation-icon';
+      icon.textContent = r.passed ? '\u2713' : '\u2717';
+      row.appendChild(icon);
+      var label = document.createElement('span');
+      label.className = 'validation-label';
+      label.textContent = r.label;
+      row.appendChild(label);
+      if (r.detail && !r.passed) {
+        var detail = document.createElement('span');
+        detail.className = 'validation-detail';
+        detail.textContent = r.detail;
+        row.appendChild(detail);
+      }
+      validationResults.appendChild(row);
+      if (!r.passed) { allPassed = false; }
+    }
+    // Summary line
+    var summary = document.createElement('div');
+    summary.className = 'validation-summary ' + (allPassed ? 'validation-summary--pass' : 'validation-summary--fail');
+    summary.textContent = allPassed ? 'All checks passed!' : 'Some checks did not pass yet. Keep working!';
+    validationResults.appendChild(summary);
   }
 
   /* ---- Render a step ---- */
@@ -201,6 +255,17 @@
       nextBtn.style.display = '';
       prevBtn.disabled = step.index === 0;
       nextBtn.disabled = step.index === step.total - 1;
+    }
+
+    // Validation section
+    if (step.validate && step.validate.length > 0) {
+      stepValidation.style.display = '';
+      validateBtn.disabled = false;
+      validateBtn.textContent = 'Check Mission Progress';
+      validationResults.innerHTML = '';
+    } else {
+      stepValidation.style.display = 'none';
+      validationResults.innerHTML = '';
     }
 
     // Focus zone — empty or absent means no arrows (self-focus)
@@ -261,11 +326,43 @@
     });
 
     // Labels — clear all, then apply overrides from lab.json (focusLabel)
-    var labels = labelOverride || {};
+    var labels = normalizeLabels(zones, labelOverride);
     arrowLeftLabel.textContent  = labels.left  || '';
     arrowRightLabel.textContent = labels.right || '';
     arrowUpLabel.textContent    = labels.up    || '';
     arrowDownLabel.textContent  = labels.down  || '';
+  }
+
+  function normalizeLabels(zones, labelOverride) {
+    if (!labelOverride) {
+      return {};
+    }
+
+    if (typeof labelOverride === 'string') {
+      var normalized = {};
+      var firstZone = Array.isArray(zones) && zones.length ? zones[0] : null;
+      var mapping = firstZone ? focusMap[firstZone] : null;
+      if (!mapping || !mapping.arrows.length) {
+        return normalized;
+      }
+      mapping.arrows.forEach(function(arrow) {
+        normalized[arrow] = labelOverride;
+      });
+      return normalized;
+    }
+
+    var remapped = {};
+    Object.keys(labelOverride).forEach(function(key) {
+      var mapping = focusMap[key];
+      if (!mapping || !mapping.arrows.length) {
+        remapped[key] = labelOverride[key];
+        return;
+      }
+      mapping.arrows.forEach(function(arrow) {
+        remapped[arrow] = labelOverride[key];
+      });
+    });
+    return remapped;
   }
 
   function toggleActive(el, active) {

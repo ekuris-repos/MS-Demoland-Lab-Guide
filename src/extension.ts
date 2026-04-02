@@ -1,12 +1,17 @@
 import * as vscode from 'vscode';
 import { spawn } from 'child_process';
 import { get as httpsGet } from 'https';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { LabController } from './labController';
 
 const PROFILE_NAME = 'Lab Guide';
 const EXTENSION_ID = 'ms-demoland.lab-guide';
+const REQUIRED_PROFILE_EXTENSIONS = [
+  EXTENSION_ID,
+  'GitHub.copilot',
+  'GitHub.copilot-chat'
+];
 const PROFILE_URL = 'https://ekuris-repos.github.io/MS-Demoland/lab-guide-profile.json';
 
 let controller: LabController | undefined;
@@ -68,6 +73,60 @@ async function fetchProfileTemplate(): Promise<ProfileTemplate | null> {
   }
 }
 
+/** Check whether the Lab Guide profile already exists in VS Code's storage. */
+function profileExists(): boolean {
+  const storageFile = join(userDataRoot(), 'globalStorage', 'storage.json');
+  if (!existsSync(storageFile)) { return false; }
+  try {
+    const storage = JSON.parse(readFileSync(storageFile, 'utf-8'));
+    const profiles: Array<{ name: string }> = storage.userDataProfiles ?? [];
+    return profiles.some(p => p.name === PROFILE_NAME);
+  } catch {
+    return false;
+  }
+}
+
+/** Open a new VS Code window in the existing Lab Guide profile. */
+function switchToProfile() {
+  log.info('Switching to existing Lab Guide profile…');
+  launchDetached(vscodeCli(), ['--new-window', '--profile', PROFILE_NAME]);
+}
+
+/**
+ * Remove the Lab Guide profile from VS Code's storage and delete its
+ * settings directory. Returns true if the profile was found and removed.
+ */
+function removeProfile(): boolean {
+  const root = userDataRoot();
+  const storageFile = join(root, 'globalStorage', 'storage.json');
+  if (!existsSync(storageFile)) { return false; }
+
+  try {
+    const storage = JSON.parse(readFileSync(storageFile, 'utf-8'));
+    const profiles: Array<{ name: string; location: string }> =
+      storage.userDataProfiles ?? [];
+    const idx = profiles.findIndex(p => p.name === PROFILE_NAME);
+    if (idx === -1) { return false; }
+
+    const location = profiles[idx].location;
+    profiles.splice(idx, 1);
+    storage.userDataProfiles = profiles;
+    writeFileSync(storageFile, JSON.stringify(storage, null, 2), 'utf-8');
+    log.info(`Removed "${PROFILE_NAME}" entry from storage.json`);
+
+    // Delete the profile's settings directory
+    const profileDir = join(root, 'profiles', location);
+    if (existsSync(profileDir)) {
+      rmSync(profileDir, { recursive: true, force: true });
+      log.info(`Deleted profile directory: ${profileDir}`);
+    }
+    return true;
+  } catch (e: any) {
+    log.error(`Failed to remove profile: ${e.message}`);
+    return false;
+  }
+}
+
 /** Write settings.json into the profile directory (idempotent). */
 function writeProfileSettings(template: ProfileTemplate) {
   const root = userDataRoot();
@@ -107,14 +166,59 @@ function vscodeCli(): string {
   return join(exeDir, 'bin', cmd + ext);
 }
 
-/** Run a shell command and return the exit code as a promise. */
-function run(cmd: string): Promise<number> {
+/** Run a process and return the exit code as a promise. */
+function run(command: string, args: string[]): Promise<number> {
   return new Promise(resolve => {
-    log.info(`Running: ${cmd}`);
-    const child = spawn(cmd, { shell: true, stdio: 'ignore' });
+    log.info(`Running: ${command} ${args.join(' ')}`);
+    const child = spawn(command, args, {
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+    });
     child.on('close', code => resolve(code ?? 1));
-    child.on('error', () => resolve(1));
+    child.on('error', (err) => {
+      log.error(`Process launch failed: ${err.message}`);
+      resolve(1);
+    });
   });
+}
+
+function launchDetached(command: string, args: string[]): void {
+  log.info(`Launching detached: ${command} ${args.join(' ')}`);
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: 'ignore',
+    shell: process.platform === 'win32',
+    windowsHide: true,
+  });
+  child.on('error', (err) => {
+    log.error(`Detached launch failed: ${err.message}`);
+  });
+  child.unref();
+}
+
+async function cleanupWorkbenchState(): Promise<void> {
+  const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+  if (tabs.length > 0) {
+    try {
+      await vscode.window.tabGroups.close(tabs, true);
+    } catch (err) {
+      log.warn(`Failed to close tabs via API: ${err}`);
+    }
+  }
+
+  const commands = [
+    'workbench.action.closeSidebar',
+    'workbench.action.closePanel',
+    'workbench.action.closeAuxiliaryBar'
+  ];
+
+  for (const command of commands) {
+    try {
+      await vscode.commands.executeCommand(command);
+    } catch (err) {
+      log.warn(`Workbench cleanup command failed: ${command} ${err}`);
+    }
+  }
 }
 
 /**
@@ -129,15 +233,15 @@ async function openInProfile(template: ProfileTemplate) {
 
   // Phase 1: Create the profile (headless — just ensures it exists in storage.json)
   log.info('Phase 1: Creating profile…');
-  await run(`"${cli}" --profile "${PROFILE_NAME}" --list-extensions`);
+  await run(cli, ['--profile', PROFILE_NAME, '--list-extensions']);
 
-  // Phase 2: Install the extension into the profile
+  // Phase 2: Install the required extensions into the profile
   log.info('Phase 2: Installing extension…');
-  const installCode = await run(
-    `"${cli}" --profile "${PROFILE_NAME}" --install-extension ${EXTENSION_ID}`
-  );
-  if (installCode !== 0) {
-    log.warn(`Extension install exited with code ${installCode} (may not be published yet)`);
+  for (const extensionId of REQUIRED_PROFILE_EXTENSIONS) {
+    const installCode = await run(cli, ['--profile', PROFILE_NAME, '--install-extension', extensionId]);
+    if (installCode !== 0) {
+      log.warn(`Extension install exited with code ${installCode}: ${extensionId}`);
+    }
   }
 
   // Phase 3: Write settings.json so profileActive=true is picked up on launch
@@ -146,10 +250,7 @@ async function openInProfile(template: ProfileTemplate) {
 
   // Phase 4: Open the window
   log.info('Phase 4: Opening profile window…');
-  const child = spawn(`"${cli}" --profile "${PROFILE_NAME}"`, {
-    shell: true, detached: true, stdio: 'ignore'
-  });
-  child.unref();
+  launchDetached(cli, ['--new-window', '--profile', PROFILE_NAME]);
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -162,13 +263,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const profileActive = vscode.workspace.getConfiguration('labGuide')
     .get<boolean>('profileActive', false);
 
-  if (!profileActive) {
-    log.info('labGuide.profileActive is false — not in Lab Guide profile');
-    vscode.window.showInformationMessage(
-      'Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.',
-      'Create Profile'
-    ).then(async choice => {
-      if (choice !== 'Create Profile') { return; }
+  // ── Commands available outside the profile ────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand('labGuide.runProfiler', async () => {
+      log.info('Command: runProfiler');
       const template = await fetchProfileTemplate();
       if (template) {
         openInProfile(template);
@@ -177,18 +275,72 @@ export async function activate(context: vscode.ExtensionContext) {
           'Failed to download the Lab Guide profile. Check the Lab Guide output channel for details.'
         );
       }
-    });
+    }),
+    vscode.commands.registerCommand('labGuide.removeProfile', () => {
+      log.info('Command: removeProfile');
+      if (removeProfile()) {
+        vscode.window.showInformationMessage('Lab Guide profile removed.');
+      } else {
+        vscode.window.showWarningMessage('No Lab Guide profile found to remove.');
+      }
+    })
+  );
+
+  if (!profileActive) {
+    log.info('labGuide.profileActive is false — not in Lab Guide profile');
+    const exists = profileExists();
+    const firstLaunch = !context.globalState.get<boolean>('launched');
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('labGuide.switchToProfile', () => {
+        log.info('Command: switchToProfile');
+        switchToProfile();
+      })
+    );
+
+    // Status bar — subtle, non-intrusive reminder that Lab Guide is available
+    const statusBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 0);
+    statusBtn.text = '$(beaker) Lab Guide';
+    statusBtn.tooltip = exists
+      ? 'Switch to the Lab Guide profile'
+      : 'Create the Lab Guide profile';
+    statusBtn.command = exists ? 'labGuide.switchToProfile' : 'labGuide.runProfiler';
+    statusBtn.show();
+    context.subscriptions.push(statusBtn);
+
+    if (firstLaunch) {
+      // First activation after install — auto-launch into the profile
+      await context.globalState.update('launched', true);
+      log.info('First activation — auto-launching into profile');
+
+      if (exists) {
+        log.info('Profile exists — switching to it');
+        switchToProfile();
+      } else {
+        vscode.window.showInformationMessage(
+          'Lab Guide will create a dedicated VS Code profile and open it in a new window to keep your settings safe.',
+          'Create Profile'
+        ).then(async choice => {
+          if (choice !== 'Create Profile') { return; }
+          vscode.commands.executeCommand('labGuide.runProfiler');
+        });
+      }
+    } else {
+      // Subsequent launches — status bar is enough, don't nag
+      log.info('Returning user — status bar only, no auto-launch');
+    }
     return;
   }
   log.info('Running inside Lab Guide profile ✓');
 
-  // ── Welcome toast (first run in correct profile) ──────────────
+  // ── Welcome walkthrough (first run in correct profile) ─────────
   const welcomed = context.globalState.get<boolean>('welcomed');
   if (!welcomed) {
     await context.globalState.update('welcomed', true);
-    vscode.window.showInformationMessage(
-      'Welcome to the GitHub Copilot Training Lab! Choose a course from the catalog to begin an interactive session.',
-      'Dismiss'
+    vscode.commands.executeCommand(
+      'workbench.action.openWalkthrough',
+      'ms-demoland.lab-guide#labGuide.welcome',
+      true  // open to the side
     );
   }
 
@@ -220,30 +372,47 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('labGuide.openSettings', () => {
       log.info('Command: openSettings');
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:ms-demoland.lab-guide');
+    }),
+    vscode.commands.registerCommand('labGuide.openCatalog', async () => {
+      log.info('Command: openCatalog');
+      const catalogUrl = vscode.workspace.getConfiguration('labGuide').get<string>('catalogUrl');
+      if (!catalogUrl) {
+        vscode.window.showWarningMessage('No catalog URL configured.');
+        return;
+      }
+      await cleanupWorkbenchState();
+      await controller!.openCatalog(catalogUrl);
+    }),
+    vscode.commands.registerCommand('labGuide.openWalkthrough', () => {
+      log.info('Command: openWalkthrough');
+      vscode.commands.executeCommand(
+        'workbench.action.openWalkthrough',
+        'ms-demoland.lab-guide#labGuide.welcome',
+        true
+      );
     })
   );
   log.info('Commands registered');
 
   // ── Auto-open catalog on startup ──────────────────────────────
-  const catalogUrl = vscode.workspace.getConfiguration('labGuide').get<string>('catalogUrl');
-  log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
-  if (catalogUrl) {
-    log.info('Cleaning up previous workspace state');
-
-    // Close all editor tabs
-    vscode.commands.executeCommand('workbench.action.closeAllEditors').then(async () => {
-      // Close sidebar (Extensions pane, Explorer, etc.)
-      await vscode.commands.executeCommand('workbench.action.closeSidebar');
-      // Close panel area (Terminal, Output, Problems, etc.)
-      await vscode.commands.executeCommand('workbench.action.closePanel');
-      // Close auxiliary bar (Copilot Chat secondary sidebar)
-      await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
-
-      log.info(`Opening catalog → ${catalogUrl}`);
-      controller!.openCatalog(catalogUrl);
-    }, (err: unknown) => log.error(`Workspace cleanup failed: ${err}`));
+  const activeLab = context.globalState.get<{ server: string; course: string }>('activeLab');
+  if (activeLab) {
+    // A lab was in progress (e.g. window reloaded after cloning) — restore it
+    log.info(`Restoring active lab: server="${activeLab.server}", course="${activeLab.course}"`);
+    controller!.startLabFromUri(activeLab.server, activeLab.course);
   } else {
-    log.warn('No catalogUrl configured — skipping auto-open');
+    const catalogUrl = vscode.workspace.getConfiguration('labGuide').get<string>('catalogUrl');
+    log.info(`labGuide.catalogUrl = "${catalogUrl ?? '(not set)'}"`);
+    if (catalogUrl) {
+      log.info('Cleaning up previous workspace state');
+
+      cleanupWorkbenchState().then(async () => {
+        log.info(`Opening catalog → ${catalogUrl}`);
+        await controller!.openCatalog(catalogUrl);
+      }, (err: unknown) => log.error(`Workspace cleanup failed: ${err}`));
+    } else {
+      log.warn('No catalogUrl configured — skipping auto-open');
+    }
   }
 
   // ── URI handler ───────────────────────────────────────────────
@@ -301,3 +470,4 @@ export function deactivate() {
   log.info('Lab Guide extension deactivating…');
   controller?.dispose();
 }
+// Demo change for screenshot capture

@@ -7,6 +7,19 @@ import * as path from 'path';
 import { GuidePanel } from './guidePanel';
 import { BrowserPanel } from './browserPanel';
 
+export interface LabValidation {
+  /** What kind of check to perform. */
+  type: 'fileExists' | 'fileContains' | 'commandOutput';
+  /** Glob pattern relative to workspace root (fileExists, fileContains). */
+  path?: string;
+  /** Regex pattern to match in file content (fileContains). */
+  pattern?: string;
+  /** Shell command to run (commandOutput). */
+  command?: string;
+  /** Description shown in the validation checklist. */
+  label: string;
+}
+
 export interface LabStep {
   title: string;
   instruction: string;
@@ -15,6 +28,7 @@ export interface LabStep {
   action?: string | string[];
   actionLabel?: string;
   onLeave?: string | string[];
+  validate?: LabValidation[];
 }
 
 /** A slide entry contains one or more sub-steps shown when that slide is active. */
@@ -37,6 +51,7 @@ export class LabController {
   private guidePanel: GuidePanel | undefined;
   private browserPanel: BrowserPanel;
   private lab: Lab | undefined;
+  private activeCatalogOrigin: string | undefined;
   private currentSlide = 1;
   private currentSubStep = 0;
   private statusBarItem: vscode.StatusBarItem;
@@ -55,6 +70,9 @@ export class LabController {
   // ── Open catalog in our browser panel ──────────────────────────
   async openCatalog(url: string) {
     this.log.info(`openCatalog → ${url}`);
+    this.activeCatalogOrigin = this.getOrigin(url);
+    // Clear any active lab so re-activation doesn't restore it
+    await this.context.globalState.update('activeLab', undefined);
     await this.browserPanel.showCatalog(url);
   }
 
@@ -62,11 +80,28 @@ export class LabController {
   private isAllowedOrigin(serverUrl: string): boolean {
     const catalogUrl = vscode.workspace.getConfiguration('labGuide').get<string>('catalogUrl', '');
     try {
-      const allowed = new URL(catalogUrl);
       const candidate = new URL(serverUrl);
-      return candidate.protocol === 'https:' && candidate.origin === allowed.origin;
+
+      if (candidate.protocol !== 'https:') {
+        return false;
+      }
+
+      if (this.activeCatalogOrigin && candidate.origin === this.activeCatalogOrigin) {
+        return true;
+      }
+
+      const allowed = new URL(catalogUrl);
+      return candidate.origin === allowed.origin;
     } catch {
       return false;
+    }
+  }
+
+  private getOrigin(url: string): string | undefined {
+    try {
+      return new URL(url).origin;
+    } catch {
+      return undefined;
     }
   }
 
@@ -100,7 +135,10 @@ export class LabController {
         this.currentSubStep = 0;
         this.log.info(`[startLabFromUri] Lab loaded: "${this.lab.title}" — ${Object.keys(this.lab.slides).length} slide entries`);
 
-        // ── GitHub session (best-effort — slides load regardless) ─────
+        // Persist active lab so we can restore after a workspace reload
+        await this.context.globalState.update('activeLab', { server, course: coursePath });
+
+        // ── GitHub session (best-effort for metrics only) ─────────────
         const ghSession = await vscode.authentication.getSession('github', [], { silent: true });
         if (ghSession) {
           this.log.info(`[metrics] course="${coursePath}" user="${ghSession.account.label}" userId="${ghSession.account.id}"`);
@@ -130,27 +168,22 @@ export class LabController {
         this.log.info(`[startLabFromUri] Navigating browser panel → ${courseUrl}`);
         this.browserPanel.showSlides(courseUrl);
 
-        // Guide panel only loads when we have a tracked session so the
-        // extension can navigate slides and record progress.
-        if (ghSession) {
-          this.log.info('[startLabFromUri] Creating/revealing guide panel in Column 2');
-          if (!this.guidePanel) {
-            this.log.info('[startLabFromUri] Creating new GuidePanel');
-            this.guidePanel = new GuidePanel(this.context, msg => this.onWebviewMessage(msg));
-          } else {
-            this.log.info('[startLabFromUri] Reusing existing GuidePanel');
-          }
-          this.guidePanel.show();
-          this.log.info('[startLabFromUri] GuidePanel.show() called');
-
-          this.guidePanel.postMessage({ type: 'setTitle', title: this.lab.title });
-          this.log.info(`[startLabFromUri] Sent setTitle: "${this.lab.title}"`);
-
-          this.statusBarItem.show();
-          this.showCurrentStep();
+        // Guide panel — always open so the learner gets step-by-step instructions
+        this.log.info('[startLabFromUri] Creating/revealing guide panel in Column 2');
+        if (!this.guidePanel) {
+          this.log.info('[startLabFromUri] Creating new GuidePanel');
+          this.guidePanel = new GuidePanel(this.context, msg => this.onWebviewMessage(msg));
         } else {
-          this.log.info('[startLabFromUri] Skipping guide panel — no tracked session');
+          this.log.info('[startLabFromUri] Reusing existing GuidePanel');
         }
+        this.guidePanel.show();
+        this.log.info('[startLabFromUri] GuidePanel.show() called');
+
+        this.guidePanel.postMessage({ type: 'setTitle', title: this.lab.title });
+        this.log.info(`[startLabFromUri] Sent setTitle: "${this.lab.title}"`);
+
+        this.statusBarItem.show();
+        this.showCurrentStep();
         this.log.info('[startLabFromUri] Lab fully initialized ✓');
       }
     );
@@ -229,6 +262,31 @@ export class LabController {
     this.statusBarItem.dispose();
   }
 
+  private async cleanupWorkbenchState(): Promise<void> {
+    const tabs = vscode.window.tabGroups.all.flatMap(group => group.tabs);
+    if (tabs.length > 0) {
+      try {
+        await vscode.window.tabGroups.close(tabs, true);
+      } catch (err) {
+        this.log.warn(`[cleanup] Failed to close tabs via API: ${err}`);
+      }
+    }
+
+    const commands = [
+      'workbench.action.closeSidebar',
+      'workbench.action.closePanel',
+      'workbench.action.closeAuxiliaryBar'
+    ];
+
+    for (const command of commands) {
+      try {
+        await vscode.commands.executeCommand(command);
+      } catch (err) {
+        this.log.warn(`[cleanup] Command failed: ${command} ${err}`);
+      }
+    }
+  }
+
   // ── Workspace folder management ───────────────────────────────
 
   /** Remove all workspace folders so the learner starts with a clean slate. */
@@ -239,10 +297,7 @@ export class LabController {
       vscode.workspace.updateWorkspaceFolders(0, folders.length);
     }
     // Also close all editor tabs, sidebar, and panel
-    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-    await vscode.commands.executeCommand('workbench.action.closeSidebar');
-    await vscode.commands.executeCommand('workbench.action.closePanel');
-    await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+    await this.cleanupWorkbenchState();
     this.log.info('[init] Workspace cleaned ✓');
   }
 
@@ -299,6 +354,7 @@ export class LabController {
     this.currentSlide = 1;
     this.currentSubStep = 0;
     this.statusBarItem.hide();
+    await this.context.globalState.update('activeLab', undefined);
 
     // Close the guide panel
     this.guidePanel?.dispose();
@@ -310,6 +366,8 @@ export class LabController {
       this.log.info(`[returnToCatalog] Removing ${folders.length} workspace folder(s)`);
       vscode.workspace.updateWorkspaceFolders(0, folders.length);
     }
+
+    await this.cleanupWorkbenchState();
 
     this.log.info('[LabController] Cleanup complete ✓');
   }
@@ -526,6 +584,7 @@ export class LabController {
       case 'prevStep': this.prevStep(); break;
       case 'ready': this.showCurrentStep(); break;
       case 'replayAction': this.replayCurrentAction(); break;
+      case 'runValidation': this.runValidation(); break;
       case 'copyToClipboard':
         if (msg.text) { vscode.env.clipboard.writeText(msg.text); }
         break;
@@ -543,6 +602,81 @@ export class LabController {
       await this.executeAction(cmd);
     }
     setTimeout(() => this.guidePanel?.reveal(), 300);
+  }
+
+  // ── Workspace validation ──────────────────────────────────────
+
+  /** Run all validation checks defined on the current step. */
+  private async runValidation() {
+    const entry = this.currentEntry();
+    if (!entry) { return; }
+    const step = entry.steps[this.currentSubStep];
+    if (!step?.validate?.length) { return; }
+
+    this.log.info(`[validate] Running ${step.validate.length} check(s) on slide ${this.currentSlide} step ${this.currentSubStep}`);
+    this.guidePanel?.postMessage({ type: 'validationRunning' });
+
+    const results: { label: string; passed: boolean; detail?: string }[] = [];
+    for (const check of step.validate) {
+      results.push(await this.executeValidation(check));
+    }
+
+    this.log.info(`[validate] Results: ${results.map(r => `${r.passed ? '✓' : '✗'} ${r.label}`).join(', ')}`);
+    this.guidePanel?.postMessage({ type: 'validationResults', results });
+  }
+
+  /** Execute a single validation check against the workspace. */
+  private async executeValidation(check: LabValidation): Promise<{ label: string; passed: boolean; detail?: string }> {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.length) {
+      return { label: check.label, passed: false, detail: 'No workspace folder open' };
+    }
+    const root = folders[0].uri;
+
+    switch (check.type) {
+      case 'fileExists': {
+        if (!check.path) { return { label: check.label, passed: false, detail: 'No path specified' }; }
+        const files = await vscode.workspace.findFiles(check.path, null, 1);
+        return { label: check.label, passed: files.length > 0 };
+      }
+
+      case 'fileContains': {
+        if (!check.path || !check.pattern) { return { label: check.label, passed: false, detail: 'Missing path or pattern' }; }
+        const files = await vscode.workspace.findFiles(check.path, null, 1);
+        if (files.length === 0) { return { label: check.label, passed: false, detail: 'File not found' }; }
+        try {
+          const content = await vscode.workspace.fs.readFile(files[0]);
+          const text = Buffer.from(content).toString('utf-8');
+          const regex = new RegExp(check.pattern, 'i');
+          return { label: check.label, passed: regex.test(text) };
+        } catch {
+          return { label: check.label, passed: false, detail: 'Could not read file' };
+        }
+      }
+
+      case 'commandOutput': {
+        if (!check.command) { return { label: check.label, passed: false, detail: 'No command specified' }; }
+        return new Promise((resolve) => {
+          const child = cp.spawn(check.command!, [], {
+            shell: true,
+            cwd: root.fsPath,
+            timeout: 60_000,
+            stdio: ['ignore', 'pipe', 'pipe']
+          });
+          let stderr = '';
+          child.stderr.on('data', (chunk: Buffer) => { stderr += chunk; });
+          child.on('close', (code) => {
+            resolve({ label: check.label, passed: code === 0, detail: code !== 0 ? stderr.slice(0, 200) : undefined });
+          });
+          child.on('error', (err) => {
+            resolve({ label: check.label, passed: false, detail: err.message });
+          });
+        });
+      }
+
+      default:
+        return { label: check.label, passed: false, detail: 'Unknown validation type' };
+    }
   }
 
   private async onBrowserMessage(msg: { type: string; server?: string; course?: string; slide?: number }) {

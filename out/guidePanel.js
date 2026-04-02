@@ -176,6 +176,10 @@ class GuidePanel {
       <div class="step-instruction" id="stepInstruction"></div>
       <div class="step-tip" id="stepTip"></div>
       <button id="actionBtn" class="action-btn" style="display:none"></button>
+      <div class="step-validation" id="stepValidation" style="display:none">
+        <button id="validateBtn" class="validate-btn">Check Mission Progress</button>
+        <div class="validation-results" id="validationResults"></div>
+      </div>
     </div>
 
     <!-- Navigation -->
